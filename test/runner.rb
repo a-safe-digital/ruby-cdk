@@ -12,5 +12,10 @@ require_relative "test_helper"
 
 Dir[File.join(__dir__, "unit", "**", "*_test.rb")].sort.each { |path| require path }
 
+# What crosses components, in process: the umbrella, synthesis end to end, the
+# examples against their committed templates. Against AWS is elsewhere: under
+# test/integration/aws/, and only through `rake integration`.
+Dir[File.join(__dir__, "integration", "in_process", "**", "*_test.rb")].sort.each { |path| require path }
+
 # The component map is checked after the unit tests.
 Dir[File.join(__dir__, "architecture", "*_test.rb")].sort.each { |path| require path }

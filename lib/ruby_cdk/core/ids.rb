@@ -1,11 +1,14 @@
 # frozen_string_literal: true
 
+require_relative "../errors"
+require_relative "elements"
+
 module RubyCdk
   module Core
     # The id rules of the tree, and how a resource's logical ID follows from the
     # ids around it (architecture §3, D-004 and D-029).
     module Ids
-      # A logical ID in a template: letters and digits, nothing else (rule V2).
+      # A logical ID in a template: letters and digits, nothing else.
       LOGICAL_ID_PATTERN = /\A[A-Za-z0-9]+\z/
 
       module_function
@@ -41,6 +44,27 @@ module RubyCdk
           current = current.scope
         end
         ids.reverse.join
+      end
+
+      # The logical ID a reference stands for: a String, a Symbol, a resource
+      # or a parameter of a Stack. what names the call in the message, as
+      # 'resource "Table" in App/blog: depends_on'.
+      def logical_id_of(target, what)
+        return target if target.is_a?(String)
+        return target.name if target.is_a?(Symbol)
+        return target.logical_id if target.respond_to?(:logical_id)
+
+        raise UsageError, "#{what} takes a resource, a parameter or a logical ID, got #{target.inspect}"
+      end
+
+      # The name a `condition:` stands for: a String, a Symbol or a condition the
+      # stack declared. nil stays nil. what names the call in the message.
+      def condition_name(condition, what)
+        return nil if condition.nil?
+        return condition if condition.is_a?(String)
+        return condition.name if condition.is_a?(Symbol) || condition.is_a?(Condition)
+
+        raise UsageError, "#{what} takes a condition the stack declared, or its name, got #{condition.inspect}"
       end
     end
   end

@@ -60,7 +60,7 @@ module Architecture
     # Layer 4: composes components; owns no logic of its own.
     Component.new(name: :cli, layer: 4, entry: "ruby_cdk/cli", paths: %w[ruby_cdk/cli.rb ruby_cdk/cli], gems: %w[thor],
       depends_on: %i[errors values version core cfn synth assets deploy adapters],
-      purpose: "The command line: options, the app file, exit codes. Calls components; implements nothing."),
+      purpose: "The command line: options, the app file, exit codes. Calls components; implements nothing.")
   ].freeze
 
   # The umbrella: what `require "ruby-cdk"` loads. No component may require it.
@@ -92,7 +92,7 @@ module Architecture
     # A component and everything it may reach, directly or through its dependencies.
     def closure(name)
       seen = []
-      frontier = [name]
+      frontier = [ name ]
       until frontier.empty?
         current = frontier.pop
         next if seen.include?(current)
@@ -113,7 +113,7 @@ module Architecture
         if File.directory?(full)
           Dir[File.join(full, "**", "*.rb")].sort
         elsif File.file?(full)
-          [full]
+          [ full ]
         else
           []
         end

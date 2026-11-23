@@ -4,6 +4,11 @@ require_relative "../errors"
 
 module RubyCdk
   module Deploy
+    # The errors the engine raises on purpose, one per situation, each a
+    # subclass of the class in errors.rb that carries its exit code. The base
+    # class is what a component that did not raise the error can know, so the
+    # command line and the engine rescue by it.
+
     # Exit 1. The credentials are for another account or region than the stack's env.
     class TargetMismatch < RubyCdk::PreconditionError; end
 
@@ -40,25 +45,14 @@ module RubyCdk
     # Exit 1. A wait reached its overall limit.
     class WaitTimedOut < RubyCdk::PreconditionError; end
 
-    # Exit 1. AWS refused a request, or could not be reached.
-    class AwsRequestFailed < RubyCdk::PreconditionError
-      attr_reader :code
-
-      # code is the error code AWS answered with, or nil when there was no answer.
-      def initialize(message = nil, code: nil)
-        @code = code
-        super(message)
-      end
-    end
-
     # Exit 3. CloudFormation rejected the change set, or did not create it.
     class ChangeSetFailed < RubyCdk::ChangeSetRejected; end
 
     # Exit 4. Approval was refused, or needed and not given.
     class ApprovalRequired < RubyCdk::ApprovalRefused; end
 
-    # The exit code of section 14 for an error raised on purpose. Anything that is
-    # not a RubyCdk::Error is a bug or an unexpected failure, and also exits 1.
+    # The exit code of section 14 for an error raised on purpose. Anything that
+    # is not a RubyCdk::Error is a bug or an unexpected failure, and also exits 1.
     def self.exit_code_for(error)
       case error
       when RubyCdk::RulesFailed then 6

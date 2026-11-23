@@ -165,31 +165,31 @@ class ComponentBoundariesTest < Minitest::Test
       end
     RUBY
     found = []
-    each_constant(source) { |kind, name, more, _line| found << [kind, name, more] }
+    each_constant(source) { |kind, name, more, _line| found << [ kind, name, more ] }
 
     assert_equal [
-      [:definition, %i[RubyCdk]],
-      [:definition, %i[RubyCdk Deploy]],
-      [:definition, %i[RubyCdk Deploy ChangeSet]],
-      [:read, %i[Struct]],
-      [:definition, %i[RubyCdk Deploy StackStatus]],
-      [:definition, %i[RubyCdk Deploy StackStatus IN_PROGRESS]],
-      [:read, %i[Digest SHA256]],
-      [:read, %i[StackStatus]],
-      [:read, %i[REVIEW]],
-      [:read, %i[Deploy StackStatus]],
-      [:definition, %i[RubyCdk App]],
-      [:definition, %i[RubyCdk App A B]],
-      [:read, %i[RubyCdk Deploy StackStatus]],
-      [:read, %i[RubyCdk VERSION]]
-    ], found.map { |kind, name, _more| [kind, name] }
+      [ :definition, %i[RubyCdk] ],
+      [ :definition, %i[RubyCdk Deploy] ],
+      [ :definition, %i[RubyCdk Deploy ChangeSet] ],
+      [ :read, %i[Struct] ],
+      [ :definition, %i[RubyCdk Deploy StackStatus] ],
+      [ :definition, %i[RubyCdk Deploy StackStatus IN_PROGRESS] ],
+      [ :read, %i[Digest SHA256] ],
+      [ :read, %i[StackStatus] ],
+      [ :read, %i[REVIEW] ],
+      [ :read, %i[Deploy StackStatus] ],
+      [ :definition, %i[RubyCdk App] ],
+      [ :definition, %i[RubyCdk App A B] ],
+      [ :read, %i[RubyCdk Deploy StackStatus] ],
+      [ :read, %i[RubyCdk VERSION] ]
+    ], found.map { |kind, name, _more| [ kind, name ] }
 
-    in_stack_status = [%i[RubyCdk], %i[RubyCdk Deploy], %i[RubyCdk Deploy StackStatus]]
+    in_stack_status = [ %i[RubyCdk], %i[RubyCdk Deploy], %i[RubyCdk Deploy StackStatus] ]
     read = ->(written) { found.find { |_kind, name, _more| name == written }[2] }
-    assert_equal [%i[Digest SHA256]], read.call(%i[Digest SHA256]), "a name written from the root is only itself"
-    assert_equal [%i[RubyCdk Deploy StackStatus StackStatus], %i[RubyCdk Deploy StackStatus], %i[RubyCdk StackStatus], %i[StackStatus]],
+    assert_equal [ %i[Digest SHA256] ], read.call(%i[Digest SHA256]), "a name written from the root is only itself"
+    assert_equal [ %i[RubyCdk Deploy StackStatus StackStatus], %i[RubyCdk Deploy StackStatus], %i[RubyCdk StackStatus], %i[StackStatus] ],
       read.call(%i[StackStatus]), "innermost scope first"
-    assert_equal [%i[RubyCdk Deploy StackStatus Deploy StackStatus], %i[RubyCdk Deploy Deploy StackStatus], %i[RubyCdk Deploy StackStatus], %i[Deploy StackStatus]],
+    assert_equal [ %i[RubyCdk Deploy StackStatus Deploy StackStatus], %i[RubyCdk Deploy Deploy StackStatus], %i[RubyCdk Deploy StackStatus], %i[Deploy StackStatus] ],
       read.call(%i[Deploy StackStatus])
 
     table = {
@@ -202,8 +202,8 @@ class ComponentBoundariesTest < Minitest::Test
     assert_equal %i[RubyCdk Deploy REVIEW], resolved(table, %i[REVIEW], read.call(%i[REVIEW])), "the module around that"
     assert_equal %i[RubyCdk Deploy StackStatus], resolved(table, %i[Deploy StackStatus], read.call(%i[Deploy StackStatus])), "a path written from the middle"
     assert_nil resolved(table, %i[Digest SHA256], read.call(%i[Digest SHA256])), "not the gem's: left alone"
-    assert_equal %i[RubyCdk Nowhere], resolved(table, %i[RubyCdk Nowhere], [%i[RubyCdk Nowhere]]), "written under RubyCdk and defined nowhere: reported"
-    assert_nil resolved(table, %i[Nowhere], [%i[Nowhere]])
+    assert_equal %i[RubyCdk Nowhere], resolved(table, %i[RubyCdk Nowhere], [ %i[RubyCdk Nowhere] ]), "written under RubyCdk and defined nowhere: reported"
+    assert_nil resolved(table, %i[Nowhere], [ %i[Nowhere] ])
   end
 
   private
@@ -254,12 +254,12 @@ class ComponentBoundariesTest < Minitest::Test
   # which for a require means the dependency is hidden.
   def loads_in(source)
     found = []
-    stack = [Prism.parse(source).value]
+    stack = [ Prism.parse(source).value ]
     until stack.empty?
       node = stack.pop
       if (kind = load_kind(node))
         argument = node.arguments&.arguments&.first
-        found << [node.location.start_line, argument.is_a?(Prism::StringNode) ? argument.unescaped : nil, kind]
+        found << [ node.location.start_line, argument.is_a?(Prism::StringNode) ? argument.unescaped : nil, kind ]
         next
       end
       stack.concat(node.compact_child_nodes)
@@ -274,7 +274,7 @@ class ComponentBoundariesTest < Minitest::Test
     return if node.name == :load && node.receiver && !kernel_receiver?(node.receiver)
 
     return node.name if LOAD_METHODS.include?(node.name)
-    return :eval if CODE_AS_TEXT.include?(node.name) && (node.name == :eval || node.arguments&.arguments&.first)
+    :eval if CODE_AS_TEXT.include?(node.name) && (node.name == :eval || node.arguments&.arguments&.first)
   end
 
   def kernel_receiver?(node)
@@ -319,7 +319,7 @@ class ComponentBoundariesTest < Minitest::Test
       next unless kind == :read
 
       name = resolved(table, written, candidates)
-      reads << [line, name] if name
+      reads << [ line, name ] if name
     end
     reads
   end
@@ -345,22 +345,22 @@ class ComponentBoundariesTest < Minitest::Test
     case node
     when Prism::ClassNode, Prism::ModuleNode
       full = defined_as(scopes, written(node.constant_path), root?(node.constant_path))
-      yield [:definition, full, nil, node.location.start_line] if full
-      inner = full ? scopes + [full] : scopes
+      yield [ :definition, full, nil, node.location.start_line ] if full
+      inner = full ? scopes + [ full ] : scopes
       skip = node.constant_path
     when Prism::ConstantWriteNode, Prism::ConstantOrWriteNode, Prism::ConstantAndWriteNode, Prism::ConstantOperatorWriteNode
-      yield [:definition, scopes.last.to_a + [node.name], nil, node.location.start_line]
+      yield [ :definition, scopes.last.to_a + [ node.name ], nil, node.location.start_line ]
     when Prism::ConstantPathWriteNode, Prism::ConstantPathOrWriteNode, Prism::ConstantPathAndWriteNode, Prism::ConstantPathOperatorWriteNode
       path = written(node.target)
       if path
         full = defined_as(scopes, path, root?(node.target))
-        yield [:definition, full, nil, node.location.start_line] if full
+        yield [ :definition, full, nil, node.location.start_line ] if full
         skip = node.target
       end
     when Prism::ConstantReadNode, Prism::ConstantPathNode
       path = written(node)
       # A path is read whole: its first parts are not read on their own.
-      yield [:read, path, candidates_for(scopes, path, root?(node)), node.location.start_line] if path
+      yield [ :read, path, candidates_for(scopes, path, root?(node)), node.location.start_line ] if path
       return
     end
     node.compact_child_nodes.each do |child|
@@ -374,9 +374,9 @@ class ComponentBoundariesTest < Minitest::Test
 
   # What a written path can mean where it is: the scopes it sits in, innermost first.
   def candidates_for(scopes, path, absolute)
-    return [path] if absolute
+    return [ path ] if absolute
 
-    scopes.reverse.map { |scope| scope + path } + [path]
+    scopes.reverse.map { |scope| scope + path } + [ path ]
   end
 
   # The name as written, ["RubyCdk", "Deploy", "StackStatus"]; nil when part of
@@ -384,9 +384,9 @@ class ComponentBoundariesTest < Minitest::Test
   def written(node)
     case node
     when Prism::ConstantReadNode
-      [node.name]
+      [ node.name ]
     when Prism::ConstantPathNode
-      node.parent ? written(node.parent)&.push(node.name) : [node.name]
+      node.parent ? written(node.parent)&.push(node.name) : [ node.name ]
     end
   end
 

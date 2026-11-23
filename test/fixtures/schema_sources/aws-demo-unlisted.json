@@ -1,0 +1,40 @@
+{
+  "typeName": "AWS::Demo::Unlisted",
+  "description": "A fixture type only the provider schema knows: the resource specification does not list it.",
+  "additionalProperties": false,
+  "documentationUrl": "https://example.invalid/aws-demo-unlisted",
+  "required": [
+    "Token"
+  ],
+  "createOnlyProperties": [
+    "/properties/Token"
+  ],
+  "conditionalCreateOnlyProperties": [
+    "/properties/Options/Mode"
+  ],
+  "properties": {
+    "Token": {
+      "type": "string"
+    },
+    "Options": {
+      "$ref": "#/definitions/Options"
+    }
+  },
+  "definitions": {
+    "Options": {
+      "type": "object",
+      "properties": {
+        "Mode": {
+          "type": "string",
+          "enum": [
+            "Fast",
+            "Slow"
+          ]
+        },
+        "Depth": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}
