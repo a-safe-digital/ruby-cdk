@@ -20,3 +20,44 @@ jobs:
           bundler-cache: true
       - run: gem install bundler-audit --no-document
       - run: bundle-audit check --update
+
+  # The validator is measured against templates CloudFormation accepted. The
+  # CDK moves every day, so once a week its templates are fetched again, and a
+  # pull request is opened when the committed sample moved. Nothing is merged
+  # by the job: the pull request runs CI like any other and waits for a person.
+  corpus:
+    name: The CDK's templates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - name: Follow the CDK; fail loudly when its templates cannot be fetched
+        run: bundle exec rake corpus:update
+      - name: Did the sample move?
+        id: sample
+        run: |
+          git add -A test/fixtures/corpus
+          if git diff --cached --quiet; then
+            echo "moved=false" >> "$GITHUB_OUTPUT"
+            echo "corpus: the sample did not move"
+          else
+            echo "moved=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open a pull request when it moved
+        if: steps.sample.outputs.moved == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B corpus-refresh
+          git commit -m "chore(corpus): follow aws/aws-cdk"
+          git push --force origin corpus-refresh
+          gh pr create --base main --head corpus-refresh \
+            --title "The CDK's templates moved" \
+            --body "Opened by the weekly audit. Read META.json and the templates that came and went, and the corpus test's output in CI." \
+            || gh pr view corpus-refresh --json state --jq .state
