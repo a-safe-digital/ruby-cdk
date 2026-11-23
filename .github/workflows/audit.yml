@@ -21,16 +21,18 @@ jobs:
       - run: gem install bundler-audit --no-document
       - run: bundle-audit check --update
 
-  # The validator is measured against templates CloudFormation accepted. The
-  # CDK moves every day, so once a week its templates are fetched again, and a
-  # pull request is opened when the committed sample moved. Nothing is merged
-  # by the job: the pull request runs CI like any other and waits for a person.
+  # Both jobs below follow something that moves on its own, and open a pull
+  # request when what the repository holds moved with it. Nothing is merged by
+  # a job. A pull request opened with the default token starts no workflow of
+  # its own, so each job asks for one CI run on its branch, and the pull
+  # request waits for a person.
   corpus:
     name: The CDK's templates
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     steps:
       - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
@@ -40,7 +42,7 @@ jobs:
       - name: Follow the CDK; fail loudly when its templates cannot be fetched
         run: bundle exec rake corpus:update
       - name: Did the sample move?
-        id: sample
+        id: moved
         run: |
           git add -A test/fixtures/corpus
           if git diff --cached --quiet; then
@@ -50,7 +52,7 @@ jobs:
             echo "moved=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Open a pull request when it moved
-        if: steps.sample.outputs.moved == 'true'
+        if: steps.moved.outputs.moved == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -59,5 +61,49 @@ jobs:
           git push --force origin corpus-refresh
           gh pr create --base main --head corpus-refresh \
             --title "The CDK's templates moved" \
-            --body "Opened by the weekly audit. Read META.json and the templates that came and went, and the corpus test's output in CI." \
+            --body "Opened by the weekly audit. Read META.json and the templates that came and went, and the corpus test's output in the CI run of this branch." \
             || gh pr view corpus-refresh --json state --jq .state
+      - name: Ask for one CI run on that branch
+        if: steps.moved.outputs.moved == 'true'
+        run: gh workflow run ci.yml --ref corpus-refresh
+
+  schema:
+    name: The schema sources of AWS
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - name: Follow the sources of AWS; fail loudly when they cannot be fetched
+        run: bundle exec rake spec:update
+      - name: Did the model move?
+        id: moved
+        run: |
+          git add -A data/spec
+          if git diff --cached --quiet; then
+            echo "moved=false" >> "$GITHUB_OUTPUT"
+            echo "schema: the model did not move"
+          else
+            echo "moved=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open a pull request when it moved
+        if: steps.moved.outputs.moved == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B schema-refresh
+          git commit -m "chore(schema): follow the sources of AWS"
+          git push --force origin schema-refresh
+          gh pr create --base main --head schema-refresh \
+            --title "The schema sources of AWS moved" \
+            --body "Opened by the weekly audit. The vendored model was rebuilt: read META.json. The manifest of the example carries the model's identity, so its committed fixture may need one deliberate refresh (UPDATE_SNAPSHOTS=1)." \
+            || gh pr view schema-refresh --json state --jq .state
+      - name: Ask for one CI run on that branch
+        if: steps.moved.outputs.moved == 'true'
+        run: gh workflow run ci.yml --ref schema-refresh
