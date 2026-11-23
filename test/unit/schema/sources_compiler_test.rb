@@ -26,7 +26,7 @@ class SourcesCompilerTest < Minitest::Test
   def shape(compiled, name, property, definition = nil)
     body = definition ? type(compiled, name)["definitions"].fetch(definition) : type(compiled, name)
     entry = body["properties"].to_h.fetch(property)
-    [entry["kind"], entry["item"], entry["of"], entry["update"], entry["unique"]]
+    [ entry["kind"], entry["item"], entry["of"], entry["update"], entry["unique"] ]
   end
 
   def empty_specification
@@ -112,7 +112,7 @@ class SourcesCompilerTest < Minitest::Test
 
     assert_equal [ "nested", nil, "Settings", "mutable", nil ], shape(compiled, WIDGET, "Settings")
     named_by_provider = %w[Level Strictness Tier BucketName ParameterConstraints Settings Tag S3Location Parameters ParameterMap Replica Status]
-    assert_equal %w[InlineTags Route Settings.Window SpecNested Store], widget["definitions"].keys - named_by_provider
+    assert_equal %w[InlineTags Route Settings.Window SpecNested Store], (widget["definitions"].keys - named_by_provider).sort
     refute widget["definitions"].key?("Unused"), "a definition nothing reaches is not written"
 
     # An object written inline under a property takes the property's name.
@@ -171,7 +171,7 @@ class SourcesCompilerTest < Minitest::Test
     assert_equal %w[Name Settings], widget["required"]
     assert_equal %w[ImmutableBySpec Name Settings.ApiKey], widget["create_only"]   # the provider's paths and what the specification marks Immutable
     assert_equal %w[Arn Endpoint Status.Message], widget["read_only"]              # the provider's paths and the specification's Attributes
-    assert_equal ["Token"], unlisted["create_only"]
+    assert_equal [ "Token" ], unlisted["create_only"]
     assert_equal [], unlisted["read_only"]
   end
 
@@ -231,6 +231,9 @@ class SourcesCompilerTest < Minitest::Test
     assert_equal [ "list", "nested", "Sub", "mutable", nil ], shape(compiled, ONLY_SPECIFICATION, "Admins")    # a property type that is itself a list
     assert_equal [ "list", "nested", "Tag", "mutable", false ], shape(compiled, ONLY_SPECIFICATION, "Tags")    # the Tag every type shares
     assert_equal [ "json", nil, nil, "mutable", nil ], shape(compiled, ONLY_SPECIFICATION, "Nowhere")          # a name the specification does not define
+    assert_equal [ "list", "json", nil, "mutable", false ], shape(compiled, ONLY_SPECIFICATION, "Loose")      # a list of an undefined type
+    assert_equal [ "list", "list", nil, "mutable", nil ], shape(compiled, ONLY_SPECIFICATION, "Rows")         # a list of a type that is itself a list
+    assert_equal [ "json", nil, nil, "mutable", nil ], shape(compiled, ONLY_SPECIFICATION, "Shapeless")      # neither a primitive nor a type
     assert_equal %w[Sub Tag], only["definitions"].keys.sort
     assert_equal %w[Id], only["definitions"].fetch("Sub")["required"]
     assert_equal "immutable", shape(compiled, ONLY_SPECIFICATION, "Rank", "Sub")[3]
@@ -284,6 +287,102 @@ class SourcesCompilerTest < Minitest::Test
     assert_equal "Node", shape(compiled, "AWS::Demo::Chain", "Next", "Node")[2]
   end
 
+  # How oneOf, anyOf and allOf are read. The real sources reach every one of these branches;
+  # this pins what each gives.
+  def test_composition_of_terms
+    base = { "type" => "object", "properties" => { "Name" => { "type" => "string" } }, "required" => [ "Name" ] }
+    strings = { "type" => "array", "items" => { "type" => "string" } }
+    algebra = "AWS::Demo::Algebra"
+    compiled = alone(
+      "typeName" => algebra,
+      "properties" => {
+        "Choice" => { "oneOf" => [
+          { "type" => "object", "properties" => { "A" => { "type" => "string" }, "Shared" => { "type" => "string" } }, "required" => [ "A" ] },
+          { "type" => "object", "properties" => { "B" => { "type" => "integer" }, "Shared" => { "type" => "string" } }, "required" => [ "B" ] }
+        ] },
+        "Both" => { "allOf" => [
+          { "type" => "object", "properties" => { "C" => { "type" => "string" } }, "required" => [ "C" ] },
+          { "type" => "object", "properties" => { "D" => { "type" => "integer" } }, "required" => [ "D" ] }
+        ] },
+        "Plain" => { "$ref" => "#/definitions/Base" },
+        "Wider" => { "anyOf" => [ { "$ref" => "#/definitions/Base" }, { "type" => "object", "properties" => { "Extra" => { "type" => "string" } } } ] },
+        "Sets" => { "anyOf" => [
+          { "type" => "array", "items" => { "type" => "object", "properties" => { "X" => { "type" => "string" } } } },
+          { "type" => "array", "items" => { "type" => "object", "properties" => { "Y" => { "type" => "integer" } } } }
+        ] },
+        "SameTwice" => { "anyOf" => [ strings.merge("uniqueItems" => true), strings ] },
+        "OtherList" => { "anyOf" => [ { "type" => "array", "items" => { "$ref" => "#/definitions/Base" } }, strings ] },
+        "BothLists" => { "allOf" => [ strings, { "type" => "array", "items" => { "type" => "integer" } } ] },
+        "WiderNumbers" => { "anyOf" => [ { "type" => "array", "items" => { "type" => "integer" } }, { "type" => "array", "items" => { "type" => "number" } } ] },
+        "NarrowerNumbers" => { "allOf" => [ { "type" => "array", "items" => { "type" => "number" } }, { "type" => "array", "items" => { "type" => "integer" } } ] },
+        "UntypedMap" => { "patternProperties" => { ".+" => { "type" => "string" } } },
+        "UntypedList" => { "items" => { "type" => "string" } },
+        "UntypedObject" => { "properties" => { "E" => { "type" => "string" } } },
+        "UntypedTime" => { "format" => "date-time" },
+        "Bare" => { "type" => "object" },
+        # AWS::DynamoDB::Table KeySchema is written exactly like this.
+        "ListOrObject" => { "oneOf" => [ { "type" => "array", "uniqueItems" => true, "items" => { "$ref" => "#/definitions/Base" } }, { "type" => "object" } ] },
+        "MapOrObject" => { "anyOf" => [ { "type" => "object", "patternProperties" => { ".+" => { "type" => "string" } } }, { "type" => "object" } ] },
+        "StringOrObject" => { "type" => "string", "oneOf" => [ { "type" => "string" }, { "type" => "object" } ] },
+        "ObjectOrList" => { "anyOf" => [ { "type" => "object" }, { "type" => "array", "items" => { "type" => "string" } } ] },
+        "BothShapes" => { "allOf" => [ { "$ref" => "#/definitions/Base" }, { "type" => "object", "properties" => { "More" => { "type" => "string" } }, "required" => [ "More" ] } ] },
+        "ObjectOfBase" => { "type" => "object", "allOf" => [ { "$ref" => "#/definitions/Base" } ] },
+        "Twice" => { "oneOf" => [
+          { "type" => "object", "properties" => { "Inside" => { "$ref" => "#/definitions/Base" } }, "required" => [ "Inside" ] },
+          { "type" => "object", "properties" => { "Inside" => { "$ref" => "#/definitions/Other" } }, "required" => [ "Inside" ] }
+        ] }
+      },
+      "definitions" => {
+        "Base" => base,
+        "Other" => { "type" => "object", "properties" => { "Other" => { "type" => "integer" } } }
+      }
+    )
+    definitions = type(compiled, algebra)["definitions"]
+
+    # One of two objects: every property, and only what both require.
+    assert_equal %w[A B Shared], definitions.fetch("Choice")["properties"].map(&:first).sort
+    assert_equal [], definitions.fetch("Choice")["required"]
+    # Both of two objects: every property, and both requirements.
+    assert_equal %w[C D], definitions.fetch("Both")["properties"].map(&:first).sort
+    assert_equal %w[C D], definitions.fetch("Both")["required"]
+    # A definition keeps its name when it is reached on its own, and takes the property's when an alternative widens it.
+    assert_equal "Base", shape(compiled, algebra, "Plain")[2]
+    assert_equal %w[Name], definitions.fetch("Base")["required"]
+    assert_equal "Wider", shape(compiled, algebra, "Wider")[2]
+    assert_equal %w[Extra Name], definitions.fetch("Wider")["properties"].map(&:first).sort
+    assert_equal [], definitions.fetch("Wider")["required"]
+    # Two lists of two inline objects: one definition holding both sets of properties.
+    assert_equal [ "list", "nested", "Sets", "mutable", nil ], shape(compiled, algebra, "Sets")
+    assert_equal %w[X Y], definitions.fetch("Sets")["properties"].map(&:first).sort
+    assert_equal [], definitions.fetch("Sets")["required"]
+    # Lists: a rule one alternative states alone is no rule; two lists of different things are anything.
+    assert_equal [ "list", "string", nil, "mutable", nil ], shape(compiled, algebra, "SameTwice")
+    assert_equal "json", shape(compiled, algebra, "OtherList")[0]
+    assert_equal "json", shape(compiled, algebra, "BothLists")[0]
+    assert_equal [ "list", "double", nil, "mutable", nil ], shape(compiled, algebra, "WiderNumbers")        # an integer or a number
+    assert_equal [ "list", "integer", nil, "mutable", nil ], shape(compiled, algebra, "NarrowerNumbers")  # a number that is an integer
+    # Nodes that say what they hold without naming a type.
+    assert_equal [ "map", "string", nil, "mutable", nil ], shape(compiled, algebra, "UntypedMap")
+    assert_equal [ "list", "string", nil, "mutable", nil ], shape(compiled, algebra, "UntypedList")
+    assert_equal [ "nested", nil, "UntypedObject", "mutable", nil ], shape(compiled, algebra, "UntypedObject")
+    assert_equal [ "timestamp", nil, nil, "mutable", nil ], shape(compiled, algebra, "UntypedTime")
+    assert_equal "json", shape(compiled, algebra, "Bare")[0]
+    # A bare object gives way to what stands next to it, whichever comes first; a scalar next to one is anything.
+    assert_equal [ "list", "nested", "Base", "mutable", true ], shape(compiled, algebra, "ListOrObject")
+    assert_equal [ "map", "string", nil, "mutable", nil ], shape(compiled, algebra, "MapOrObject")
+    assert_equal [ "list", "string", nil, "mutable", nil ], shape(compiled, algebra, "ObjectOrList")
+    assert_equal "json", shape(compiled, algebra, "StringOrObject")[0]
+    assert_equal [ "nested", nil, "Base", "mutable", nil ], shape(compiled, algebra, "ObjectOfBase")
+    # Both of two definitions: one definition under the property's name, with everything both require.
+    assert_equal [ "nested", nil, "BothShapes", "mutable", nil ], shape(compiled, algebra, "BothShapes")
+    assert_equal %w[More Name], definitions.fetch("BothShapes")["properties"].map(&:first).sort
+    assert_equal %w[More Name], definitions.fetch("BothShapes")["required"]
+    # The same slot described by two different definitions: nothing precise can be said of it.
+    assert_equal [ "nested", nil, "Twice", "mutable", nil ], shape(compiled, algebra, "Twice")
+    assert_equal [ "json", nil, nil, "mutable", nil ], shape(compiled, algebra, "Inside", "Twice")
+    assert_equal %w[Inside], definitions.fetch("Twice")["required"]
+  end
+
   def test_a_primitive_type_this_version_does_not_know_fails_loudly
     specification = SchemaFixtures.specification
     specification["ResourceTypes"]["AWS::Demo::OnlySpec"]["Properties"]["Port"]["PrimitiveType"] = "Quaternion"
@@ -291,5 +390,14 @@ class SourcesCompilerTest < Minitest::Test
     error = assert_raises(RubyCdk::Error) { compile(specification:) }
 
     assert_match(/primitive type "Quaternion"/, error.message)
+  end
+
+  def test_an_update_type_this_version_does_not_know_fails_loudly
+    specification = SchemaFixtures.specification
+    specification["ResourceTypes"]["AWS::Demo::OnlySpec"]["Properties"]["Port"]["UpdateType"] = "Eventually"
+
+    error = assert_raises(RubyCdk::Error) { compile(specification:) }
+
+    assert_match(/AWS::Demo::OnlySpec: the specification gives a property the update type "Eventually"/, error.message)
   end
 end

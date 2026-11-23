@@ -22,7 +22,7 @@ module RubyCdk
         # region goes into the model; it is what the two sources were downloaded for.
         def call(region:)
           types = @provider_schemas.to_h do |name, schema|
-            [name, ProviderType.new(schema, @specification).call]
+            [ name, ProviderType.new(schema, @specification).call ]
           end
           (@specification.resource_types.keys - @provider_schemas.keys).each do |name|
             types[name] = SpecificationType.new(@specification, name).call

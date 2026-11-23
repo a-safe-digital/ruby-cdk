@@ -35,12 +35,12 @@ class TypeSchemaTest < Minitest::Test
   def test_lambda_function_properties_have_their_kinds
     fn = lambda_function
 
-    assert_equal [ :string, nil, nil ], [fn.properties["Runtime"].kind, fn.properties["Runtime"].item_kind, fn.properties["Runtime"].definition]
+    assert_equal [ :string, nil, nil ], [ fn.properties["Runtime"].kind, fn.properties["Runtime"].item_kind, fn.properties["Runtime"].definition ]
     assert_equal :integer, fn.properties["MemorySize"].kind
     assert_equal :boolean, fn.properties["PublishToLatestPublished"].kind
-    assert_equal [ :nested, nil, "Code" ], [fn.properties["Code"].kind, fn.properties["Code"].item_kind, fn.properties["Code"].definition]
-    assert_equal [ :list, :string, nil ], [fn.properties["Layers"].kind, fn.properties["Layers"].item_kind, fn.properties["Layers"].definition]
-    assert_equal [ :list, :nested, "Tag" ], [fn.properties["Tags"].kind, fn.properties["Tags"].item_kind, fn.properties["Tags"].definition]
+    assert_equal [ :nested, nil, "Code" ], [ fn.properties["Code"].kind, fn.properties["Code"].item_kind, fn.properties["Code"].definition ]
+    assert_equal [ :list, :string, nil ], [ fn.properties["Layers"].kind, fn.properties["Layers"].item_kind, fn.properties["Layers"].definition ]
+    assert_equal [ :list, :nested, "Tag" ], [ fn.properties["Tags"].kind, fn.properties["Tags"].item_kind, fn.properties["Tags"].definition ]
     assert fn.properties["Code"].required
     refute fn.properties["Runtime"].required
     assert_equal "Runtime", fn.properties["Runtime"].name
@@ -78,7 +78,7 @@ class TypeSchemaTest < Minitest::Test
     assert_equal :provider, table.source
     assert_equal %w[KeySchema], table.required
     assert_equal [ :list, :nested, "KeySchema", true, :immutable, true ],
-      [key_schema.kind, key_schema.item_kind, key_schema.definition, key_schema.required, key_schema.update_behaviour, key_schema.unique_items]
+      [ key_schema.kind, key_schema.item_kind, key_schema.definition, key_schema.required, key_schema.update_behaviour, key_schema.unique_items ]
     assert_equal %w[AttributeName KeyType], table.definitions["KeySchema"].required.sort
     assert_equal :string, table.definitions["KeySchema"].properties["KeyType"].kind
     assert_equal :immutable, table.properties["TableName"].update_behaviour
@@ -92,7 +92,7 @@ class TypeSchemaTest < Minitest::Test
 
     assert_equal :immutable, bucket.properties["BucketName"].update_behaviour
     assert_equal %w[AuthenticatedRead AwsExecRead BucketOwnerFullControl BucketOwnerRead LogDeliveryWrite Private PublicRead PublicReadWrite], bucket.properties["AccessControl"].allowed_values
-    assert_equal [ :nested, "VersioningConfiguration" ], [bucket.properties["VersioningConfiguration"].kind, bucket.properties["VersioningConfiguration"].definition]
+    assert_equal [ :nested, "VersioningConfiguration" ], [ bucket.properties["VersioningConfiguration"].kind, bucket.properties["VersioningConfiguration"].definition ]
     assert_equal %w[aws:kms AES256 aws:kms:dsse], bucket.definitions["ServerSideEncryptionByDefault"].properties["SSEAlgorithm"].allowed_values
     assert_includes bucket.read_only, "Arn"
     assert_includes bucket.read_only, "WebsiteURL"
@@ -103,7 +103,7 @@ class TypeSchemaTest < Minitest::Test
     retention = Schema.type("AWS::Logs::LogGroup").properties["RetentionInDays"]
 
     assert_equal :integer, retention.kind
-    assert_equal [1, 3, 5, 7], retention.allowed_values.first(4)
+    assert_equal [ 1, 3, 5, 7 ], retention.allowed_values.first(4)
     assert retention.allowed_values.all?(Integer)
     assert Schema.type("AWS::CloudFormation::CustomResource").additional_properties?
     refute Schema.type("AWS::Logs::LogGroup").additional_properties?
@@ -117,20 +117,21 @@ class TypeSchemaTest < Minitest::Test
     assert_equal %w[EngineConfiguration WorkGroup], session.required
     assert_equal %w[EngineConfiguration ExecutionRole WorkGroup], session.create_only
     assert_equal [ :nested, "EngineConfiguration", :immutable, true ],
-      [session.properties["EngineConfiguration"].kind, session.properties["EngineConfiguration"].definition, session.properties["EngineConfiguration"].update_behaviour, session.properties["EngineConfiguration"].required]
+      [ session.properties["EngineConfiguration"].kind, session.properties["EngineConfiguration"].definition, session.properties["EngineConfiguration"].update_behaviour, session.properties["EngineConfiguration"].required ]
     assert_equal %w[MaxConcurrentDpus], session.definitions["EngineConfiguration"].required
     spark = session.definitions["EngineConfiguration"].properties["SparkProperties"]
-    assert_equal [ :map, :string, :immutable ], [spark.kind, spark.item_kind, spark.update_behaviour]
+    assert_equal [ :map, :string, :immutable ], [ spark.kind, spark.item_kind, spark.update_behaviour ]
     assert_includes session.read_only, "EngineConfiguration.SparkProperties"
   end
 
   def test_update_behaviour_on_real_types
     assert_equal :immutable, lambda_function.update_behaviour("FunctionName")
     assert_equal :mutable, lambda_function.update_behaviour("Tags.0.Key")
-    assert_equal :mutable, lambda_function.update_behaviour([:Tags, 0, :Key])
+    assert_equal :mutable, lambda_function.update_behaviour([ :Tags, 0, :Key ])
     assert_equal :unknown, lambda_function.update_behaviour("Arn")
     assert_equal :unknown, lambda_function.update_behaviour("SnapStartResponse.ApplyOn")
-    assert_equal :unknown, lambda_function.update_behaviour("Runtime.Nope")
+    assert_equal :unknown, lambda_function.update_behaviour("Environment.Nope")
+    assert_equal :mutable, lambda_function.update_behaviour("Runtime.Nope")   # past a scalar: the scalar's own behaviour
     assert_equal :unknown, lambda_function.update_behaviour("")
     assert_equal :immutable, Schema.update_type("AWS::DynamoDB::Table", "KeySchema.0.KeyType")
   end
@@ -146,7 +147,7 @@ class TypeSchemaTest < Minitest::Test
     assert_equal :immutable, widget.update_behaviour("Settings.ApiKey")
     assert_equal :conditional, widget.update_behaviour("Status.Code")
     assert_equal :mutable, widget.update_behaviour("Tags.0.Key")
-    assert_equal :mutable, widget.update_behaviour([:Tags, 0, :Key])
+    assert_equal :mutable, widget.update_behaviour([ :Tags, 0, :Key ])
     assert_equal :mutable, widget.update_behaviour("Zones.3")
     assert_equal :mutable, widget.update_behaviour("Labels.anything")
     assert_equal :mutable, widget.update_behaviour("Requests.any.Required")

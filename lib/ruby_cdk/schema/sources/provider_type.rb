@@ -101,7 +101,7 @@ module RubyCdk
         end
 
         def nodes_by_name(properties)
-          properties.is_a?(Hash) ? properties.to_h { |name, node| [name, [node]] } : {}
+          properties.is_a?(Hash) ? properties.to_h { |name, node| [ name, [ node ] ] } : {}
         end
 
         def describe_properties(name)
@@ -185,7 +185,7 @@ module RubyCdk
           base = simple_term(node, hint, depth)
           base = base.with(name:) if name && base.is_a?(Shape)
 
-          compositions = COMPOSITION.filter_map { |keyword| [keyword, node[keyword]] if node[keyword].is_a?(Array) && node[keyword].any? }
+          compositions = COMPOSITION.filter_map { |keyword| [ keyword, node[keyword] ] if node[keyword].is_a?(Array) && node[keyword].any? }
           return base || :any if compositions.empty?
 
           # allOf is a conjunction; oneOf and anyOf are, for a kind, the same disjunction.
@@ -207,11 +207,11 @@ module RubyCdk
 
         def scalar_term(node)
           kind = case node["type"]
-                 when "string" then node["format"] == "date-time" ? :timestamp : :string
-                 when "integer" then node["format"] == "int64" ? :long : :integer
-                 when "number" then :double
-                 when "boolean" then :boolean
-                 end
+          when "string" then node["format"] == "date-time" ? :timestamp : :string
+          when "integer" then node["format"] == "int64" ? :long : :integer
+          when "number" then :double
+          when "boolean" then :boolean
+          end
           return ANY_VALUE unless kind
 
           Descriptor.new(kind:, item: nil, of: nil, values: node["enum"], pattern: node["pattern"], unique: nil)
@@ -257,9 +257,9 @@ module RubyCdk
         end
 
         def object_term(node, hint, depth)
-          return map_term(node, [node["additionalProperties"]], hint, depth) if node["additionalProperties"].is_a?(Hash)
+          return map_term(node, [ node["additionalProperties"] ], hint, depth) if node["additionalProperties"].is_a?(Hash)
           return map_term(node, node["patternProperties"].to_h.values, hint, depth) if node.key?("patternProperties")
-          return map_term(node, [node["items"]], hint, depth) if node.key?("items")   # one schema describes an object's elements under `items`
+          return map_term(node, [ node["items"] ], hint, depth) if node.key?("items")   # one schema describes an object's elements under `items`
 
           properties = node["properties"]
           return :any_object unless properties.is_a?(Hash) && properties.any?
@@ -267,23 +267,27 @@ module RubyCdk
           Shape.new(name: nil, properties: nodes_by_name(properties), required: Array(node["required"]))
         end
 
-        # Follows a $ref to what it describes. Returns the node with its definition merged
-        # in, and the definition's name when the reference is to one.
-        def dereference(node)
-          name = nil
-          hops = 0
-          while node["$ref"].is_a?(String)
-            hops += 1
-            raise RubyCdk::Error, "#{@type_name}: a chain of more than #{MAX_REFERENCE_HOPS} references at #{node["$ref"]}" if hops > MAX_REFERENCE_HOPS
+        # Follows a chain of $ref to what it describes. Returns the node reached, with the
+        # last definition merged in, and the name of the last definition on the way (the one
+        # that describes the node), or nil when the chain names none.
+        def dereference(node, hops = 0)
+          reference = node["$ref"]
+          return [ node, nil ] unless reference.is_a?(String)
 
-            reference = node["$ref"]
-            target = target_of(reference)
-            name = reference.split("/").last if reference.start_with?("#/definitions/")
-            rest = node.except("$ref")
-            node = rest.empty? ? target : target.merge(rest)
-            node["type"] = target["type"] if rest.key?("type") && target["type"] != rest["type"]
-          end
-          [node, name]
+          raise RubyCdk::Error, "#{@type_name}: a chain of more than #{MAX_REFERENCE_HOPS} references at #{reference}" if hops >= MAX_REFERENCE_HOPS
+
+          target = target_of(reference)
+          rest = node.except("$ref")
+          reached, deeper = dereference(rest.empty? ? target : merge(target, rest), hops + 1)
+          [ reached, deeper || (reference.start_with?("#/definitions/") ? reference.split("/").last : nil) ]
+        end
+
+        # A node next to its $ref, with the definition under it: the definition's `type`
+        # wins when the two disagree, since it is written once and referenced many times.
+        def merge(target, rest)
+          merged = target.merge(rest)
+          merged["type"] = target["type"] if rest.key?("type") && target["type"] != rest["type"]
+          merged
         end
 
         def target_of(reference)
@@ -362,30 +366,30 @@ module RubyCdk
           b = NUMERIC.index(right.kind)
           return ANY_VALUE unless a && b
 
-          Descriptor.new(kind: NUMERIC[widest ? [a, b].max : [a, b].min], item: nil, of: nil, values: nil, pattern: nil, unique: nil)
+          Descriptor.new(kind: NUMERIC[widest ? [ a, b ].max : [ a, b ].min], item: nil, of: nil, values: nil, pattern: nil, unique: nil)
         end
 
         # [element kind, definition] for the union of two lists or two maps; nil when nothing
         # precise can be said.
         def union_element(left, right)
-          return [left.item, left.of] if left.item == right.item && left.of == right.of
+          return [ left.item, left.of ] if left.item == right.item && left.of == right.of
           return nil unless left.of.nil? && right.of.nil?
 
           index = NUMERIC.index(left.item)
           other = NUMERIC.index(right.item)
-          index && other ? [NUMERIC[[index, other].max], nil] : [nil, nil]
+          index && other ? [ NUMERIC[[ index, other ].max], nil ] : [ nil, nil ]
         end
 
         # The same for the intersection. A nil element kind means any JSON value.
         def common_element(left, right)
-          return [right.item, right.of] if left.item.nil?
-          return [left.item, left.of] if right.item.nil?
-          return [left.item, left.of] if left.item == right.item && left.of == right.of
+          return [ right.item, right.of ] if left.item.nil?
+          return [ left.item, left.of ] if right.item.nil?
+          return [ left.item, left.of ] if left.item == right.item && left.of == right.of
           return nil unless left.of.nil? && right.of.nil?
 
           index = NUMERIC.index(left.item)
           other = NUMERIC.index(right.item)
-          index && other ? [NUMERIC[[index, other].min], nil] : nil
+          index && other ? [ NUMERIC[[ index, other ].min], nil ] : nil
         end
 
         # Every literal either allows; nil when either leaves the choice open.
@@ -431,16 +435,15 @@ module RubyCdk
 
         # [definition name, property name] for a path under /properties, or nil when the
         # path does not lead to a property.
-        def locate(segments)
-          container = ROOT
-          segments.each_with_index do |segment, index|
-            found = @descriptors.dig(container, segment)
-            return nil unless found
-            return [container, segment] if index == segments.length - 1
+        def locate(segments, container = ROOT)
+          return if segments.empty?
 
-            container = container_of(found)
-            return nil unless container
-          end
+          found = @descriptors.dig(container, segments.first)
+          return unless found
+          return [ container, segments.first ] if segments.one?
+
+          nested = container_of(found)
+          locate(segments.drop(1), nested) if nested
         end
 
         # The definition describing what a property holds, when it holds objects.
@@ -465,18 +468,18 @@ module RubyCdk
 
           if container == ROOT
             properties.each do |property, specified|
-              @specified[[container, property]] = said(specified) unless @descriptors.fetch(ROOT).key?(property)
+              @specified[[ container, property ]] = said(specified) unless @descriptors.fetch(ROOT).key?(property)
             end
           end
           @descriptors.fetch(container).each do |property, descriptor|
             specified = properties[property] or next
-            @specified[[container, property]] = said(specified)
+            @specified[[ container, property ]] = said(specified)
 
             nested = container_of(descriptor) or next
             deeper = @specification.properties(@type_name, specified) or next
-            next if seen[[nested, deeper.object_id]]
+            next if seen[[ nested, deeper.object_id ]]
 
-            seen[[nested, deeper.object_id]] = true
+            seen[[ nested, deeper.object_id ]] = true
             walk(nested, deeper, seen)
           end
         end
@@ -491,7 +494,7 @@ module RubyCdk
           @extra = SpecificationType.new(@specification, @type_name).extra(unknown_to_provider)
           return if @extra.entries.empty?
 
-          taken = @extra.definitions.keys & (@shapes.keys - [ROOT])
+          taken = @extra.definitions.keys & (@shapes.keys - [ ROOT ])
           raise RubyCdk::Error, "#{@type_name}: the provider schema and the specification both define #{taken.first.inspect}, and they may differ" if taken.any?
         end
 
@@ -505,7 +508,7 @@ module RubyCdk
             "create_only" => create_only,
             "read_only" => read_only,
             "properties" => entries(ROOT),
-            "definitions" => (@shapes.keys - [ROOT]).sort.to_h { |name| [name, definition(name)] }
+            "definitions" => (@shapes.keys - [ ROOT ]).sort.to_h { |name| [ name, definition(name) ] }
           }
           type["additional_properties"] = true if additional_properties?
           if @extra && !@extra.entries.empty?
@@ -544,7 +547,7 @@ module RubyCdk
         # [name, entry] pairs, in the provider schema's order.
         def entries(container)
           required = @shapes.fetch(container).required
-          @descriptors.fetch(container).map { |property, descriptor| [property, entry(container, property, descriptor, required.include?(property))] }
+          @descriptors.fetch(container).map { |property, descriptor| [ property, entry(container, property, descriptor, required.include?(property)) ] }
         end
 
         def definition(name)
@@ -552,7 +555,7 @@ module RubyCdk
         end
 
         def entry(container, property, descriptor, required)
-          key = [container, property]
+          key = [ container, property ]
           flags = @flags[key]
           entry = { "kind" => descriptor.kind.to_s }
           entry["item"] = descriptor.item.to_s if descriptor.item

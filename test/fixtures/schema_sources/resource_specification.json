@@ -348,6 +348,26 @@
           "UpdateType": "Mutable",
           "Required": false,
           "Type": "Missing"
+        },
+        "Loose": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-loose",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "List",
+          "ItemType": "Missing",
+          "DuplicatesAllowed": true
+        },
+        "Rows": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-rows",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "List",
+          "ItemType": "Admins"
+        },
+        "Shapeless": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-shapeless",
+          "UpdateType": "Mutable",
+          "Required": false
         }
       },
       "Attributes": {

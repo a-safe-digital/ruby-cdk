@@ -64,32 +64,38 @@ module RubyCdk
       # the schema describes, into a :json value or past a scalar, answers with the
       # behaviour of the last property it named.
       def update_behaviour(path)
-        behaviour = :unknown
-        node = self
-        skipping = nil
-
-        segments_of(path).each do |segment|
-          if skipping == :key || (skipping == :index && segment.match?(INDEX))
-            skipping = nil
-            next
-          end
-          skipping = nil
-
-          property = node.properties[segment] or return :unknown
-          return :unknown if property.update_behaviour == :unknown
-
-          behaviour = SEVERITY.key([ SEVERITY.fetch(behaviour, -1), SEVERITY.fetch(property.update_behaviour) ].max)
-          nested = property.item_kind == :nested || property.kind == :nested
-          return behaviour unless nested
-
-          node = definitions[property.definition] or return behaviour
-          skipping = :index if property.kind == :list
-          skipping = :key if property.kind == :map
-        end
-        behaviour
+        costliest_along(segments_of(path), self, :unknown)
       end
 
       private
+
+      # The costliest behaviour from the property that names the first segment on down
+      # the rest of the path. container is what holds that first segment.
+      def costliest_along(segments, container, behaviour)
+        return behaviour if segments.empty?
+
+        property = container.properties[segments.first] or return :unknown
+        return :unknown if property.update_behaviour == :unknown
+
+        behaviour = costlier(behaviour, property.update_behaviour)
+        return behaviour unless property.item_kind == :nested || property.kind == :nested
+
+        nested = definitions[property.definition] or return behaviour
+        costliest_along(past_the_element(property, segments.drop(1)), nested, behaviour)
+      end
+
+      def costlier(left, right)
+        SEVERITY.fetch(right) >= SEVERITY.fetch(left, -1) ? right : left
+      end
+
+      # The rest of a path once a list's index or a map's key is left behind.
+      def past_the_element(property, rest)
+        return rest if rest.empty?
+        return rest.drop(1) if property.kind == :map
+        return rest.drop(1) if property.kind == :list && rest.first.match?(INDEX)
+
+        rest
+      end
 
       def segments_of(path)
         case path
