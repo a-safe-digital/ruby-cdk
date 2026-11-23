@@ -268,12 +268,21 @@ class CorpusTest < Minitest::Test
     assert_equal sample.map { |path, _| Tools::Corpus.service_of(path) }, sample.map(&:last)
   end
 
-  def test_every_service_with_five_templates_is_represented
+  def test_every_service_of_the_corpus_has_a_template
+    # 160, 40 and 5 templates by the rule; the 4 of chatbot and the 1 of dsql by its exception.
     taken = seats(Tools::Corpus.select_sample(measured_corpus, count: 10))
 
-    assert_operator taken.fetch("signer"), :>=, 1
+    assert_equal %w[chatbot dsql ec2 s3 signer], taken.keys.sort
     assert_operator taken.fetch("ec2"), :>=, taken.fetch("s3")
     assert_equal 10, taken.values.sum
+  end
+
+  def test_when_the_count_cannot_hold_every_service_the_larger_ones_keep_their_seat
+    sizes = { "aws-ec2" => 50, "aws-s3" => 30, "aws-appmesh" => 3, "aws-backup" => 2, "aws-signer" => 1 }
+
+    taken = seats(Tools::Corpus.select_sample(corpus(sizes), count: 4))
+
+    assert_equal %w[appmesh backup ec2 s3], taken.keys.sort
   end
 
   def test_the_sample_stays_within_the_count
@@ -295,9 +304,10 @@ class CorpusTest < Minitest::Test
   def test_the_rest_of_the_count_goes_proportionally
     taken = seats(Tools::Corpus.select_sample(measured_corpus, count: 40))
 
-    # One seat to each of ec2, s3 and signer leaves 37 for 210 templates. In proportion that is
-    # 28.19, 7.05, 0.88, 0.70 and 0.18: 35 whole seats, and the two left go to the largest remainders.
-    assert_equal({ "ec2" => 29, "s3" => 8, "signer" => 2, "chatbot" => 1 }, taken)
+    # One seat to each of the five services leaves 35 for 210 templates. In proportion that is
+    # 26.67, 6.67, 0.83, 0.67 and 0.17: 32 whole seats, and the three left go to the largest
+    # remainders: signer, then ec2 and s3, which tie and are ordered by size.
+    assert_equal({ "ec2" => 28, "s3" => 8, "signer" => 2, "chatbot" => 1, "dsql" => 1 }, taken)
     assert_equal 40, taken.values.sum
   end
 
@@ -406,6 +416,23 @@ class CorpusTest < Minitest::Test
     assert_equal({ "ec2" => 2, "s3" => 4 }, seats(sample))
   end
 
+  def test_a_template_that_can_give_way_does_so_before_one_whose_service_has_nothing_else
+    # ec2 mixes stacks with assertion stacks; s3 deploys nothing at all.
+    paths = corpus("aws-ec2" => 12, "aws-s3" => 8)
+    uncapped = Tools::Corpus.select_sample(paths, count: 6)
+    bare = paths.grep(/aws-s3/) + chosen(uncapped, "ec2")
+    room = chosen(uncapped, "s3").size
+
+    sample = Tools::Corpus.select_sample(paths, count: 6, without_resources: bare, at_most: room)
+
+    assert_operator chosen(uncapped, "ec2").size, :>, 0
+    # s3 keeps every seat it had, with what it has; ec2 keeps its seats with its stacks.
+    assert_equal seats(uncapped), seats(sample)
+    assert_equal room, sample.count { |path, _| bare.include?(path) }
+    assert chosen(sample, "s3").all? { |path| bare.include?(path) }
+    assert chosen(sample, "ec2").none? { |path| bare.include?(path) }
+  end
+
   ## sample_name
 
   def test_sample_names_are_the_path_and_never_too_long
@@ -507,7 +534,20 @@ class CorpusTest < Minitest::Test
       assert_equal seats(sample).sort, meta["sample"]["services"].sort
       assert_equal({ written: 10, rewritten: 0, unchanged: 0 }, report[:files])
       assert report[:meta_written]
-      assert_empty report[:stale]
+      assert_empty report[:removed]
+    end
+  end
+
+  def test_meta_json_states_the_rules_of_the_sample_next_to_what_it_holds
+    Dir.mktmpdir do |dir|
+      templates = write_templates(File.join(dir, "cdk"), measured_corpus)
+
+      sample = Tools::Corpus.write_sample(destination: File.join(dir, "fixtures"), templates:, commit: COMMIT, date: "2026-11-20",
+        count: 40)[:meta].fetch("sample")
+
+      assert_equal [ true, Tools::Corpus::ONE_SEAT_PER_SERVICE_REASON ], sample.values_at("one_seat_per_service", "one_seat_per_service_reason")
+      assert_equal %w[chatbot dsql ec2 s3 signer], sample.fetch("services").keys.sort
+      assert sample.fetch("one_seat_per_service_reason").include?("#{Tools::Corpus::MIN_STRATUM} templates or more")
     end
   end
 
@@ -551,6 +591,7 @@ class CorpusTest < Minitest::Test
 
       assert_equal({ written: 0, rewritten: 0, unchanged: 12 }, report[:files])
       refute report[:meta_written]
+      assert_empty report[:removed]
       assert_equal before, watched.call
     end
   end
@@ -600,22 +641,82 @@ class CorpusTest < Minitest::Test
     end
   end
 
-  def test_what_is_not_in_the_sample_is_left_alone
+  def test_an_earlier_sample_is_removed_and_nothing_else_is
     Dir.mktmpdir do |dir|
       templates = write_templates(File.join(dir, "cdk"), measured_corpus)
       destination = File.join(dir, "fixtures")
-      stale = File.join(destination, "templates", "ec2", "packages__old.template.json")
-      readme = File.join(destination, "README.md")
-      FileUtils.mkdir_p(File.dirname(stale))
-      File.write(stale, "left by an earlier sample")
-      File.write(readme, "not a template")
-      before = [ stale, readme ].to_h { |file| [ file, state(file) ] }
+      arguments = { destination:, templates:, commit: COMMIT, date: "2026-11-20" }
+      Tools::Corpus.write_sample(**arguments, count: 12)
+      directory = File.join(destination, "templates")
+      earlier = Tools::Corpus.each_sample_template(directory).to_a.map { |file| file.delete_prefix("#{directory}/") }
 
-      report = Tools::Corpus.write_sample(destination:, templates:, commit: COMMIT, date: "2026-11-20", count: 5)
+      # None of this is the sample's, wherever it sits.
+      strangers = {
+        File.join(destination, "README.md") => "at the root of the fixtures",
+        File.join(directory, "README.md") => "someone left a note next to the templates",
+        File.join(directory, "ec2", "README.md") => "and one inside a service",
+        File.join(directory, "ec2", "notes.txt") => "not a template",
+        File.join(directory, "ec2", "Manual.template.json") => "a template named by hand",
+        File.join(directory, "ec2", "deeper", "packages__aws-ec2__a.template.json") => "the sample writes nothing this deep",
+        File.join(directory, "ec2", "a-directory.template.json", "inside.txt") => "a directory that ends like a template"
+      }
+      strangers.each do |file, text|
+        FileUtils.mkdir_p(File.dirname(file))
+        File.write(file, text)
+      end
+      outside = File.join(dir, "outside.json")
+      File.write(outside, "{}")
+      begin
+        File.symlink(outside, File.join(directory, "ec2", "0123456789__link.template.json"))
+        strangers[File.join(directory, "ec2", "0123456789__link.template.json")] = :link
+      rescue SystemCallError, NotImplementedError
+        nil
+      end
+      assert_equal 12, earlier.size
 
-      assert_equal before, [ stale, readme ].to_h { |file| [ file, state(file) ] }
-      assert_equal [ "ec2/packages__old.template.json" ], report[:stale]
-      assert_equal 5, report[:files].values.sum
+      # A smaller sample of the same corpus: what it no longer holds goes, and only that.
+      report = Tools::Corpus.write_sample(**arguments, count: 5)
+      kept = Tools::Corpus.select_sample(templates.keys, count: 5).map { |path, service| "#{service}/#{Tools::Corpus.sample_name(path)}" }
+      on_disk = Dir.glob("*/*#{Tools::Corpus::SUFFIX}", base: directory).sort.select { |path| File.lstat(File.join(directory, path)).file? }
+
+      assert_equal 7, report[:removed].size
+      assert_equal kept.sort, (earlier - report[:removed]).sort
+      assert_empty report[:removed] & kept
+      assert_equal kept.sort, on_disk - strangers.keys.map { |file| file.delete_prefix("#{directory}/") }
+      strangers.each do |file, text|
+        if text == :link
+          assert File.symlink?(file), file
+        else
+          assert_equal text, File.read(file), file
+        end
+      end
+      assert_equal "{}", File.read(outside)
+
+      # Nothing of the earlier sample is left to remove.
+      assert_empty Tools::Corpus.write_sample(**arguments, count: 5)[:removed]
+    end
+  end
+
+  def test_nothing_is_written_or_removed_when_the_new_sample_would_hold_nothing
+    Dir.mktmpdir do |dir|
+      templates = write_templates(File.join(dir, "cdk"), measured_corpus)
+      destination = File.join(dir, "fixtures")
+      Tools::Corpus.write_sample(destination:, templates:, commit: COMMIT, date: "2026-11-20", count: 12)
+      snapshot = lambda do
+        Dir.glob("**/*", base: destination).select { |path| File.file?(File.join(destination, path)) }
+          .to_h { |path| [ path, state(File.join(destination, path)) ] }
+      end
+      before = snapshot.call
+
+      # A corpus that cannot be read is not a sample that moved.
+      templates.each_value { |file| File.write(file, "{ not json") }
+
+      error = assert_raises(ArgumentError) do
+        Tools::Corpus.write_sample(destination:, templates:, commit: "f" * 40, date: "2026-11-21", count: 5)
+      end
+
+      assert_match(/no template/, error.message)
+      assert_equal before, snapshot.call
     end
   end
 
@@ -636,8 +737,9 @@ class CorpusTest < Minitest::Test
 
       assert_equal({ written: 18, rewritten: 0, unchanged: 0 }, report[:files])
       assert_equal({ "ec2" => 8, "signer" => 10 }, report[:meta]["sample"]["services"])
-      # The whole corpus fits, so there was no cap to apply and none to record.
+      # The whole corpus fits, so no rule of the sample was applied, and none is recorded.
       refute report[:meta]["sample"].key?("without_resources_cap")
+      refute report[:meta]["sample"].key?("one_seat_per_service")
       assert_equal 3, report[:meta]["corpus"]["unparseable"]
       assert_equal 5, report[:meta]["sample"]["without_resources"]
       assert_equal 1, report[:meta]["sample"]["resource_types"]
@@ -674,13 +776,14 @@ class CorpusTest < Minitest::Test
     assert without.values.all? { |template| (template.keys - %w[Outputs Parameters Rules]).empty? && template.keys.any? },
       "a template without a Resources key that holds more than Parameters, Rules and Outputs: #{without.reject { |_, template| (template.keys - %w[Outputs Parameters Rules]).empty? }.keys.first(3).inspect}"
 
-    # The sample does not let them take a third of its seats, and it still represents every
-    # service that has MIN_STRATUM templates in the corpus.
+    # The sample does not let them take a third of its seats, and every service of the corpus has
+    # a template in it. META.json states both rules next to what the sample holds of them.
     assert_operator sample["without_resources"], :<=, sample["without_resources_cap"]
     assert_equal Tools::Corpus::WITHOUT_RESOURCES_CAP, sample["without_resources_cap"]
     assert_equal Tools::Corpus::WITHOUT_RESOURCES_CAP_REASON, sample["without_resources_cap_reason"]
+    assert_equal [ true, Tools::Corpus::ONE_SEAT_PER_SERVICE_REASON ], sample.values_at("one_seat_per_service", "one_seat_per_service_reason")
+    assert_equal meta["corpus"]["services"].keys.sort, sample["services"].keys.sort
     assert_equal sample["services"].values.sum, sample["templates"]
-    assert_empty meta["corpus"]["services"].select { |_, count| count >= Tools::Corpus::MIN_STRATUM }.keys - sample["services"].keys
     # The names are paths with every "/" doubled, and the long ones carry a digest of their path.
     names = files.map { |file| File.basename(file) }
     assert names.all? { |name| name.end_with?(Tools::Corpus::SUFFIX) && name.include?("__") }
@@ -692,10 +795,13 @@ class CorpusTest < Minitest::Test
     assert_equal sample["resource_types"], types.size
 
     megabytes = ->(bytes) { format("%.2f MB", bytes / 1e6) }
+    small = meta["corpus"]["services"].select { |_, count| count < Tools::Corpus::MIN_STRATUM }.keys
     puts
     puts "corpus sample: #{sample["templates"]} templates, #{sample["bytes"]} bytes (#{megabytes.call(sample["bytes"])}), " \
       "#{sample["resource_types"]} distinct resource types, #{sample["services"].size} services, " \
       "#{without.size} without a Resources key (at most #{sample["without_resources_cap"]})"
+    puts "corpus sample, seats: one to each of its #{sample["services"].size} services, #{small.size} of them with fewer than " \
+      "#{Tools::Corpus::MIN_STRATUM} templates in the corpus; #{sample["templates"] - sample["services"].size} shared in proportion"
     puts "corpus sample, most templates per service: " \
       "#{sample["services"].sort_by { |service, count| [ -count, service ] }.first(5).map { |service, count| "#{service} #{count}" }.join(", ")}"
     puts "corpus: #{meta["corpus"]["templates"]} templates, #{meta["corpus"]["bytes"]} bytes (#{megabytes.call(meta["corpus"]["bytes"])}), " \

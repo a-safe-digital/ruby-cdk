@@ -1,21 +1,34 @@
 {
  "Resources": {
-  "Queue4A7E3555": {
-   "Type": "AWS::SQS::Queue",
-   "UpdateReplacePolicy": "Delete",
-   "DeletionPolicy": "Delete"
-  }
- },
- "Outputs": {
-  "ExportsOutputFnGetAttQueue4A7E3555Arn15A7202E": {
-   "Value": {
-    "Fn::GetAtt": [
-     "Queue4A7E3555",
-     "Arn"
-    ]
-   },
-   "Export": {
-    "Name": "Beta-Stack1:ExportsOutputFnGetAttQueue4A7E3555Arn15A7202E"
+  "SigningProfileLambda4B150CCB": {
+   "Type": "AWS::Signer::SigningProfile",
+   "Properties": {
+    "PlatformId": "AWSLambda-SHA384-ECDSA",
+    "SignatureValidityPeriod": {
+     "Type": "MONTHS",
+     "Value": 135
+    }
+   }
+  },
+  "SigningProfileOCI1EA741C3": {
+   "Type": "AWS::Signer::SigningProfile",
+   "Properties": {
+    "PlatformId": "Notation-OCI-SHA384-ECDSA",
+    "SignatureValidityPeriod": {
+     "Type": "DAYS",
+     "Value": 60
+    }
+   }
+  },
+  "SigningProfileWithName6D0F168B": {
+   "Type": "AWS::Signer::SigningProfile",
+   "Properties": {
+    "PlatformId": "AWSLambda-SHA384-ECDSA",
+    "ProfileName": "test_signing_profile_name",
+    "SignatureValidityPeriod": {
+     "Type": "MONTHS",
+     "Value": 135
+    }
    }
   }
  },

@@ -90,18 +90,22 @@ namespace :corpus do
         fetched.commit[0, 12], fetched.date, corpus["templates"], corpus["bytes"] / 1e6,
         corpus["resource_types"], fetched.seconds
       )
+      # "removed": files that an earlier sample left under test/fixtures/corpus/templates and this
+      # one does not hold. That directory is the sample's, so nothing is left there by hand.
       puts format(
-        "corpus: sample of %d templates, %.2f MB, %d resource types: %d written, %d rewritten, %d unchanged; META.json %s",
-        sample["templates"], sample["bytes"] / 1e6, sample["resource_types"], files[:written], files[:rewritten],
-        files[:unchanged], report[:meta_written] ? "rewritten" : "unchanged"
+        "corpus: sample of %d templates, %.2f MB, %d resource types, %d services: %d written, %d rewritten, " \
+          "%d unchanged, %d removed; META.json %s",
+        sample["templates"], sample["bytes"] / 1e6, sample["resource_types"], sample["services"].size, files[:written],
+        files[:rewritten], files[:unchanged], report[:removed].size, report[:meta_written] ? "rewritten" : "unchanged"
       )
+      unless report[:removed].empty?
+        shown = report[:removed].first(5)
+        shown << "..." if report[:removed].size > shown.size
+        puts "corpus: removed #{shown.join(", ")}"
+      end
       if corpus["unparseable"].positive?
         puts "corpus: #{corpus["unparseable"]} file(s) that end in #{Tools::Corpus::SUFFIX} are not JSON objects. " \
           "They are counted in META.json and left out of the sample."
-      end
-      unless report[:stale].empty?
-        puts "corpus: #{report[:stale].size} file(s) of an earlier sample are no longer selected. They were left in " \
-          "place; delete them before committing: #{report[:stale].first(10).join(", ")}"
       end
     end
   end
