@@ -89,6 +89,12 @@ module RubyCdk
       # A creation that failed and rolled back this far. The next deploy deletes the stack first.
       FAILED_CREATION_STATUSES = %w[ROLLBACK_COMPLETE ROLLBACK_FAILED].freeze
 
+      # The statuses in which an operation SUCCEEDED. It is not the same
+      # question as whether the stack is stable: UPDATE_ROLLBACK_COMPLETE is a
+      # stable stack, one that can be updated again, and it is how an update
+      # that failed ends. This is the CDK's isDeploySuccess.
+      DEPLOYED_STATUSES = %w[CREATE_COMPLETE UPDATE_COMPLETE IMPORT_COMPLETE].freeze
+
       # The stack itself, in its own events.
       STACK_TYPE = "AWS::CloudFormation::Stack"
 
@@ -159,7 +165,7 @@ module RubyCdk
         unless executable?(change_set)
           detail = rejection_detail(name, change_set)
           output.failure(detail)
-          raise ChangeSetFailed, "#{detail}#{discard(name, change_set.id, creating)}"
+          raise ChangeSetFailed, "#{detail}#{discard(name, change_set.id, creating, false)}"
         end
 
         output.changes(changes, capabilities: capabilities)
@@ -172,21 +178,21 @@ module RubyCdk
             outputs: outputs_of(current))
         end
 
-        unless options.yes || output.ask("Deploy these changes to stack #{name} in account #{identity.account} (#{identity.region})?")
+        unless approved?(options, "Deploy these changes to stack #{name} in account #{identity.account} (#{identity.region})?")
           raise ApprovalRequired, "Approval for the changes to stack #{name} was not given, so nothing was deployed. " \
             "The change set was deleted#{creating ? ", with the new stack" : ""}." \
-            "#{discard(name, change_set.id, creating)}" \
+            "#{discard(name, change_set.id, creating, creating && wanted_protection)}" \
             "\nRun the command again in a terminal to approve it, or with --yes to deploy without asking."
         end
 
-        change_set_with_rejection(name, change_set.id, creating) do
+        change_set_with_rejection(name, change_set.id, creating, was_protected: creating && wanted_protection) do
           # A creation carries OnStackFailure instead, and the two cannot go together.
           client.execute_change_set(target, change_set.id, disable_rollback: !creating && options.no_rollback,
             retain_except_on_create: true)
         end
 
         final_state, final_info, events = follow_operation(target, name)
-        if final_state == :stable && final_info
+        if final_state == :stable && final_info && DEPLOYED_STATUSES.include?(final_info.status)
           deliver_outputs(final_info, options)
           return DeployResult.new(stack_name: name, stack_id: final_info.id, outcome: :deployed, changes: changes,
             outputs: outputs_of(final_info))
@@ -216,7 +222,7 @@ module RubyCdk
 
         target = info.id || stack_name
         output.retained(retained_resources(stack_name, client.get_template(target)))
-        unless options.yes || output.confirm(stack_name)
+        unless options.yes == true || output.confirm(stack_name) == true
           raise ApprovalRequired, "The name of stack #{stack_name} was not typed, so nothing was deleted.\n" \
             "Run the command again and type the stack name when asked, or with --yes to destroy without asking."
         end
@@ -377,13 +383,14 @@ module RubyCdk
 
       # --- change sets
 
-      # CloudFormation can refuse a change set when the request is made. The
-      # adapter raises RubyCdk::ChangeSetRejected then; the engine cleans up
-      # after a creation and reports it with everything else it rejects.
-      def change_set_with_rejection(name, change_set_id, creating)
+      # CloudFormation can refuse a change set when the request is made, or when
+      # it is executed. The adapter raises RubyCdk::ChangeSetRejected then; the
+      # engine cleans up after a creation and reports it with everything else
+      # it rejects. was_protected says whether the new stack was protected.
+      def change_set_with_rejection(name, change_set_id, creating, was_protected: false)
         yield
       rescue RubyCdk::ChangeSetRejected => e
-        raise ChangeSetFailed, "#{e.message}#{discard(name, change_set_id, creating)}"
+        raise ChangeSetFailed, "#{e.message}#{discard(name, change_set_id, creating, was_protected)}"
       end
 
       def wait_for_change_set(name, change_set_id)
@@ -436,13 +443,13 @@ module RubyCdk
       end
 
       # Housekeeping. A change set that is not going to be executed is deleted,
-      # and so is the stack a creation made. Answers a note when the cleanup did
-      # not finish, and nil when it did.
-      def discard(name, change_set_id, creating)
+      # and so is the stack a creation made. was_protected says whether that
+      # stack was protected from deletion, which then has to be lifted first.
+      # Answers a note when the cleanup did not finish, and nil when it did.
+      def discard(name, change_set_id, creating, was_protected)
         client.delete_change_set(name, change_set_id) if change_set_id
         if creating && client.stack_state(name) == :review
-          # A stack that is about to be deleted must not be protected from it.
-          client.update_termination_protection(name, enabled: false)
+          client.update_termination_protection(name, enabled: false) if was_protected
           client.delete_stack(name)
           wait_settled(name, "its deletion")
         end
@@ -457,6 +464,14 @@ module RubyCdk
         return if !!current == wanted
 
         client.update_termination_protection(target, enabled: wanted)
+      end
+
+      # Whether a deploy may go ahead without a person: --yes, or a yes to the
+      # question. Both have to be exactly true: anything else an output answers
+      # is not an approval, and an approval given by accident is the worst thing
+      # this engine can do.
+      def approved?(options, question)
+        options.yes == true || output.ask(question) == true
       end
 
       # --- an operation in progress
@@ -488,8 +503,9 @@ module RubyCdk
         end
         read_events(target, seen, events, name)
 
+        # A stack that is no longer there to be described is gone.
         info = client.stack_info(target) unless state == :absent
-        [ state, info, events ]
+        [ info ? state : :absent, info, events ]
       end
 
       # Prints the events that have not been read yet. The first read leaves the

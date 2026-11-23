@@ -73,7 +73,8 @@ module RubyCdk
       #
       # When nothing names one, the command refuses.
       def resolve_region(profile:, region:)
-        found = region
+        # A region that is blank is not one.
+        found = region.to_s.strip.empty? ? nil : region
         found = named_in_environment if found.to_s.empty?
         found = profile_region(profile) if found.to_s.empty?
         if found.to_s.empty?
@@ -215,7 +216,7 @@ module RubyCdk
         # How CloudFormation says that there is no such stack.
         MISSING_STACK = /does not exist/i
 
-        attr_reader :raw, :sts
+        attr_reader :raw
 
         def initialize(region:, profile: nil, credentials: nil, stub_responses: false)
           @profile = profile
@@ -224,6 +225,12 @@ module RubyCdk
           @raw = Aws::CloudFormation::Client.new(**client_options(region))
         rescue ArgumentError
           raise RequestFailed, "The AWS SDK does not accept the region #{region.inspect}. Run the command again with --region NAME."
+        end
+
+        # The STS client, built on first use with the options the main client
+        # was built with, so that a test stubs it the same way.
+        def sts
+          @sts ||= Aws::STS::Client.new(**client_options(@raw.config.region))
         end
 
         # Who the credentials are for, asked of STS with the same region and
@@ -441,10 +448,6 @@ module RubyCdk
           Sdk.options_for(region: region, profile: @profile, credentials: @credentials, stub_responses: @stub_responses)
         end
 
-        def sts
-          @sts ||= Aws::STS::Client.new(**client_options(@raw.config.region))
-        end
-
         # The stack as CloudFormation describes it, or nil when there is none.
         def stack_of(name)
           Sdk.request { @raw.describe_stacks(stack_name: name) }.stacks.first
@@ -515,24 +518,67 @@ module RubyCdk
           @raw.head_object(bucket: bucket, key: key, expected_bucket_owner: expected_owner)
           true
         rescue StandardError => e
-          raise Sdk.failure_of(e) || e unless status_of(e) == 404
+          status = status_of(e)
+          raise not_ours(bucket, expected_owner) if status == 403
+          raise Sdk.failure_of(e) || e unless status == 404
 
           false
         end
 
         # The object goes in encrypted at rest.
+        #
+        # What is sent is what the CDK's publisher sends with an asset
+        # (cdk-assets-lib, lib/private/handlers/files.ts): the object encrypted
+        # (ServerSideEncryption), a SHA-256 checksum (ChecksumAlgorithm), and
+        # the content type of the file. For a zip that is application/zip; for
+        # anything else the CDK takes the type from the file's extension, and so
+        # does this, because the same port carries the templates.
+        #
+        # The checksum: the SDK computes it itself from the algorithm named
+        # here. Named, it is SHA-256 as in the CDK; left out, the SDK's own
+        # default would be CRC32.
+        #
+        # The encryption: AES256 is right while the bucket's own default
+        # encryption is SSE-S3. The day the bootstrap bucket is encrypted with
+        # a KMS key this has to follow, with "aws:kms" and the key, or S3
+        # answers EncryptionTypeMismatch. The CDK reads the bucket's
+        # configuration to choose (files.ts:120-131); this does not.
         def put(bucket, key, body:, expected_owner:)
-          @raw.put_object(
-            bucket: bucket,
-            key: key,
-            body: body,
-            expected_bucket_owner: expected_owner,
-            server_side_encryption: "AES256"
-          )
+          Sdk.request do
+            @raw.put_object(
+              bucket: bucket,
+              key: key,
+              body: body,
+              expected_bucket_owner: expected_owner,
+              server_side_encryption: "AES256",
+              checksum_algorithm: "SHA256",
+              content_type: content_type_of(key)
+            )
+          end
           nil
+        rescue RequestFailed => e
+          raise not_ours(bucket, expected_owner) if REFUSED.include?(e.code)
+
+          raise
         end
 
         private
+
+        CONTENT_TYPES = { ".zip" => "application/zip", ".json" => "application/json" }.freeze
+
+        # What S3 answers a put when the bucket is not ours, or not ours to write.
+        REFUSED = %w[Forbidden AccessDenied].freeze
+
+        def content_type_of(key)
+          CONTENT_TYPES[File.extname(key.to_s).downcase] || "application/octet-stream"
+        end
+
+        # A 403 on a call that named the owner: the bucket belongs to another
+        # account, or these credentials may not touch it. Either way it stops.
+        def not_ours(bucket, expected_owner)
+          RequestFailed.new("Bucket #{bucket} belongs to another account than #{expected_owner}, or these credentials may not " \
+            "touch it (S3 answered 403 Forbidden), so the operation stops. Nothing was uploaded.", code: "Forbidden")
+        end
 
         def status_of(error)
           return error.context.http_response.status_code if error.is_a?(Aws::Errors::ServiceError)

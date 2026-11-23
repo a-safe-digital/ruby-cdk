@@ -14,8 +14,11 @@ module RubyCdk
           emit(type: "target", account: account, region: region, profile: profile)
         end
 
+        # The change view: what changes and which properties, by name. The
+        # values of the properties are left out here as in the text, and for the
+        # same reason: a template can hold a value that is not for a log.
         def changes(list, capabilities: nil)
-          emit(type: "changes", changes: list.map { |change| plain(change.to_h) }, capabilities: Array(capabilities))
+          emit(type: "changes", changes: list.map { |change| summary_of(change) }, capabilities: Array(capabilities))
         end
 
         def ask(question)
@@ -53,6 +56,13 @@ module RubyCdk
         end
 
         private
+
+        # A change without its detail: the detail carries the values.
+        def summary_of(change)
+          hash = change.to_h.reject { |key, _value| key == :detail }
+          hash[:properties] = changed_properties(change) if change.respond_to?(:detail)
+          plain(hash)
+        end
 
         # A time is written as CloudFormation writes it, in UTC.
         def plain(hash)

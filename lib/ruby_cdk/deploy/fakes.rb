@@ -26,10 +26,11 @@ module RubyCdk
     #   out = Fakes::Output.new(approvals: false)
     #   error = assert_raises(RubyCdk::Deploy::ChangeSetFailed) do
     #     Deployer.new(client: client, store: Fakes::ObjectStore.new, output: out, poller: Poller.instant,
-    #       operation_poller: Poller.instant).deploy(stack:, template:, identity: client.identity, options: DeployOptions.new)
+    #       operation_poller: Poller.instant).deploy(stack:, template:, identity: client.identity,
+    #       options: DeployOptions.new(account: Fakes::CfnClient::ACCOUNT))
     #   end
-    #   assert_equal %i[stack_state stack_info delete_stack stack_state stack_state create_change_set describe_change_set
-    #                   delete_change_set stack_state update_termination_protection delete_stack stack_state],
+    #   assert_equal %i[stack_state stack_info delete_stack stack_state create_change_set describe_change_set stack_info
+    #                   operation_events delete_change_set stack_state delete_stack stack_state],
     #     client.operations
     module Fakes
       # One call the engine made: the operation, its positional arguments and its keywords.
@@ -167,8 +168,7 @@ module RubyCdk
             id = "arn:aws:cloudformation:#{REGION}:#{ACCOUNT}:changeSet/#{change_set_name}/#{next_number}"
             @change_sets[id] = ChangeSetRecord.new(id: id, type: change_set_type, template: template,
               parameters: pairs_of(parameters), tags: tags, capabilities: capabilities, on_stack_failure: on_stack_failure)
-            # A CREATE change set is what brings a stack into existence, with nothing in it yet.
-            stack(name, status: "REVIEW_IN_PROGRESS", template: template, parameters: pairs_of(parameters), tags: tags) unless lookup(name)
+            bring_into_review(name, template, parameters, tags) if change_set_type == :create
             ChangeSet.new(id: id)
           end
         end
@@ -266,6 +266,18 @@ module RubyCdk
 
         def lookup(name_or_id)
           @stacks.each_value.find { |record| record.name == name_or_id || record.id == name_or_id }
+        end
+
+        # A CREATE change set is what brings a stack into existence, with nothing
+        # in it yet, as in CloudFormation. A stack that does not exist, or was
+        # deleted, comes into being with an ID of its own; one that is already
+        # waiting in REVIEW_IN_PROGRESS keeps its ID and takes the new template.
+        def bring_into_review(name, template, parameters, tags)
+          record = lookup(name)
+          fresh = record.nil? || record.status == StackStatus::DELETED
+          stack(name, status: "REVIEW_IN_PROGRESS", template: template, parameters: pairs_of(parameters), tags: tags,
+            id: fresh ? "arn:aws:cloudformation:#{REGION}:#{ACCOUNT}:stack/#{name}/id-#{next_number}" : nil,
+            outputs: record&.outputs || {}, resources: record&.resources || [])
         end
 
         def info_of(record)
@@ -374,8 +386,8 @@ module RubyCdk
         # or an Array consumed in order whose last answer repeats.
         def initialize(approvals: false, confirmations: false)
           @calls = []
-          @approvals = Array(approvals)
-          @confirmations = Array(confirmations)
+          @approvals = answers_of(approvals)
+          @confirmations = answers_of(confirmations)
         end
 
         def target(account:, region:, profile:)
@@ -386,14 +398,16 @@ module RubyCdk
           record(:changes, list, capabilities: capabilities)
         end
 
+        # The answer is a boolean, as the port promises: exactly true for yes.
         def ask(question)
           record(:ask, question)
-          next_answer(@approvals)
+          next_answer(@approvals) == true
         end
 
+        # confirmations are the texts that get typed.
         def confirm(text)
           record(:confirm, text)
-          next_answer(@confirmations)
+          next_answer(@confirmations) == text
         end
 
         def event(event)
@@ -480,6 +494,11 @@ module RubyCdk
 
         def record(operation, *args, **kwargs)
           @calls << Call.new(operation: operation, args: args, kwargs: kwargs)
+        end
+
+        # A list is taken as it is; anything else is the one answer, repeated.
+        def answers_of(answer)
+          answer.is_a?(Array) ? answer : [ answer ]
         end
 
         # The next of the scripted answers; the last one repeats.

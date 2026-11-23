@@ -41,7 +41,7 @@ module RubyCdk
       # For tests, which script every answer: it never really waits, and it still
       # gives up, so a test that forgot the last answer fails instead of hanging.
       def self.instant
-        new(interval: 0.001, factor: 1, max_interval: 0.001, limit: 2, sleep: ->(_seconds) {})
+        new(interval: 0.001, factor: 1, max_interval: 0.001, limit: 2, sleep: ->(_seconds) { })
       end
 
       # Calls the block until it returns something other than nil, pausing in

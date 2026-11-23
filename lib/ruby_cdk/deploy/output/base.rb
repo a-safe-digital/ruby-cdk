@@ -66,11 +66,15 @@ module RubyCdk
           read_line == text
         end
 
+        # One line per event: the time, the status in a column, what it is about,
+        # and why when it failed.
         def event(event)
           status = event.resource_status.to_s
-          line = "  #{moment(event)} #{paint(status.rjust(34), color_for(status))}  #{event.resource_type}  #{event.logical_id}"
-          line += "  #{event.status_reason}" if status.end_with?("_FAILED") && event.status_reason.to_s.size > 0
-          say(line)
+          what = [ event.resource_type, event.logical_id ].compact.join("  ")
+          reason = event.status_reason.to_s if status.end_with?("_FAILED") && event.status_reason.to_s.size > 0
+          status = status.ljust(34) unless what.empty? || status.length >= 34
+
+          say([ "  #{moment(event)}", paint(status, color_for(status)), what, reason ].compact.reject(&:empty?).join("  "))
         end
 
         def outputs(hash)

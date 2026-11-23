@@ -19,11 +19,15 @@ module RubyCdk
           code && @color ? "#{code}#{text}#{RESET}" : text
         end
 
+        # Red is what went wrong or was rolled back; yellow is what is under
+        # way, a rollback included; green is what succeeded. A rollback in
+        # progress is not a failure yet, so what is still in progress is asked
+        # first: UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS is under way.
         def color_for(status)
           status = status.to_s
-          return RED if status.match?(/_FAILED\z|ROLLBACK/) || status == "Remove"
-          return GREEN if status.match?(/_COMPLETE\z/) || status == "Add"
           return YELLOW if status.end_with?("_IN_PROGRESS") || status == "Modify"
+          return RED if status.end_with?("_FAILED") || status.include?("ROLLBACK_COMPLETE") || status == "Remove"
+          return GREEN if status.end_with?("_COMPLETE") || status == "Add"
 
           nil
         end

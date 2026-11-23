@@ -32,8 +32,9 @@ module DeployFixtures
     RubyCdk::Deploy::Identity.new(account: account, region: region, arn: "arn:aws:iam::#{account}:user/deployer")
   end
 
-  # A template with the given resources, and the other sections by name.
-  def template(resources: { "Bucket" => BUCKET }, **sections)
+  # A template with the given resources (by logical ID), and the other sections
+  # by name: template(resources: { "Role" => ... }, "Parameters" => { ... }).
+  def template(resources:, **sections)
     JSON.generate({ "Resources" => resources }.merge(sections.transform_keys(&:to_s)))
   end
 
@@ -75,6 +76,15 @@ module DeployFixtures
   def change(action: "Add", logical_id: "Bucket", resource_type: "AWS::S3::Bucket", replacement: "False", detail: nil)
     RubyCdk::Deploy::Change.new(action: action, logical_id: logical_id, resource_type: resource_type, replacement: replacement,
       detail: detail)
+  end
+
+  # A scripted answer for describe_change_set that carries the change set ID the
+  # engine was given, so that a description and the execution of the same change
+  # set agree. Use it with client.on(:describe_change_set, described(status: "FAILED")).
+  def described(**options)
+    lambda { |call|
+      change_set(id: call.args[1], **options)
+    }
   end
 
   # A stack event. Without a time it is a second after the previous one made.
