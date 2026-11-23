@@ -48,6 +48,10 @@ class AssetsManifestTest < Minitest::Test
 
     written = JSON.parse(File.read(manifest.path))
     assert_equal [ "sha256:#{hash}" ], written.fetch("stacks").first.fetch("assets")
+
+    # Which model was consulted, from the hook the umbrella registers.
+    assert_equal RubyCdk::Schema.schema_version, written.fetch("schema_version")
+    assert_match(/\Aresource specification [\d.]+, model sha256:[0-9a-f]{64}, model format \d+\z/, written.fetch("schema_version"))
   end
 
   def test_an_asset_that_cannot_be_read_is_one_issue_among_the_others

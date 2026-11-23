@@ -15,7 +15,7 @@ class SourcesUpdateTest < Minitest::Test
 
   # The files under dir: their bytes and their modification times.
   def snapshot(dir)
-    Dir.children(dir).sort.to_h { |name| [name, [File.binread(File.join(dir, name)), File.mtime(File.join(dir, name))]] }
+    Dir.children(dir).sort.to_h { |name| [ name, [ File.binread(File.join(dir, name)), File.mtime(File.join(dir, name)) ] ] }
   end
 
   def model_bytes(dir)
@@ -30,7 +30,7 @@ class SourcesUpdateTest < Minitest::Test
       assert result.changed
       assert_equal "us-east-1", result.region
       assert_equal dir, result.dir
-      assert_equal [META, MODEL], Dir.children(dir).sort
+      assert_equal [ META, MODEL ], Dir.children(dir).sort
 
       json = Zlib.gunzip(model_bytes(dir))
       assert_equal json.bytesize, result.model_bytes
@@ -39,20 +39,24 @@ class SourcesUpdateTest < Minitest::Test
       assert_equal result.meta, JSON.parse(File.read(File.join(dir, META)))
 
       meta = result.meta
-      assert_equal %w[counts model_sha256 region sources specification_version], meta.keys.sort
+      assert_equal %w[counts meta_format model_format model_sha256 region schema_version sources specification_version], meta.keys.sort
       assert_equal "us-east-1", meta["region"]
+      assert_equal RubyCdk::Schema::META_FORMAT, meta["meta_format"]
+      assert_equal RubyCdk::Schema::MODEL_FORMAT, meta["model_format"]
       assert_equal "1.2.3", meta["specification_version"]
+      assert_equal "resource specification 1.2.3, model sha256:#{result.model_sha256}, model format #{RubyCdk::Schema::MODEL_FORMAT}", meta["schema_version"]
       assert_equal({ "types" => 4, "provider_schemas" => 2, "resource_specification" => 3, "only_provider_schemas" => 1, "only_resource_specification" => 2 }, meta["counts"])
       provider = meta["sources"]["provider_schemas"]
-      assert_equal [Fixtures::PROVIDER_URL, "2026-11-01T09:30:00Z", "\"fixture\"", Digest::SHA256.hexdigest(zip), zip.bytesize, 2],
+      assert_equal [ Fixtures::PROVIDER_URL, "2026-11-01T09:30:00Z", "\"fixture\"", Digest::SHA256.hexdigest(zip), zip.bytesize, 2 ],
         provider.values_at("url", "last_modified", "etag", "sha256", "bytes", "types")
-      assert_equal [Fixtures::SPECIFICATION_URL, 3], meta["sources"]["resource_specification"].values_at("url", "types")
+      assert_equal [ Fixtures::SPECIFICATION_URL, 3 ], meta["sources"]["resource_specification"].values_at("url", "types")
 
       # What was written is what the loader reads.
       model = RubyCdk::Schema::Model.load(dir)
       assert_equal meta, model.meta
       assert_equal 4, model.types.size
       assert_equal :immutable, model.type("AWS::Demo::Widget").update_behaviour("Name")
+      assert_equal meta["schema_version"], model.schema_version
     end
   end
 
@@ -72,8 +76,8 @@ class SourcesUpdateTest < Minitest::Test
       Fixtures.update(dir)
       header = model_bytes(dir).byteslice(0, 10)
 
-      assert_equal [0x1f, 0x8b, 8, 0], header.bytes.first(4)     # a gzip of deflate data, no flags
-      assert_equal [0, 0, 0, 0], header.byteslice(4, 4).bytes    # no modification time
+      assert_equal [ 0x1f, 0x8b, 8, 0 ], header.bytes.first(4)     # a gzip of deflate data, no flags
+      assert_equal [ 0, 0, 0, 0 ], header.byteslice(4, 4).bytes    # no modification time
       assert_equal 255, header.byteslice(9, 1).getbyte(0)        # no operating system
     end
   end
@@ -93,15 +97,39 @@ class SourcesUpdateTest < Minitest::Test
 
   def test_a_source_aws_recompressed_changes_nothing
     Fixtures.in_a_temporary_directory do |dir|
-      Fixtures.update(dir)
+      first = Fixtures.update(dir).meta
       before = snapshot(dir)
       again = Fixtures.downloads(
         zip: Fixtures.provider_bytes(Fixtures.provider_schemas.values.reverse),   # the same schemas, in another order
-        specification: JSON.generate(Fixtures.specification)                      # the same document, not gzipped
+        specification: JSON.generate(Fixtures.specification),                     # the same document, not gzipped
+        last_modified: Fixtures::LAST_MODIFIED + 3600                             # republished an hour later
       )
 
-      refute Fixtures.update(dir, again).changed
+      second = Fixtures.update(dir, again)
+
+      refute second.changed
       assert_equal before, snapshot(dir)
+      refute_equal first.dig("sources", "provider_schemas", "sha256"), second.meta.dig("sources", "provider_schemas", "sha256"), "the zip is not the same file"
+      assert_equal "2026-11-01T10:30:00Z", second.meta.dig("sources", "provider_schemas", "last_modified")
+    end
+  end
+
+  # AWS republishes the provider zip several times a day with other bytes and the same
+  # schemas. What the manifest records must not move when that happens.
+  def test_schema_version_moves_only_when_the_model_does
+    Fixtures.in_a_temporary_directory do |dir|
+      first = Fixtures.update(dir).meta
+      republished = Fixtures.downloads(last_modified: Fixtures::LAST_MODIFIED + 3600)
+      same = Fixtures.update(dir, republished).meta
+
+      assert_equal "resource specification 1.2.3, model sha256:#{first["model_sha256"]}, model format #{RubyCdk::Schema::MODEL_FORMAT}", first["schema_version"]
+      assert_equal first["schema_version"], same["schema_version"]
+      assert_equal first["model_sha256"], same["model_sha256"]
+      refute_equal first.dig("sources", "provider_schemas", "last_modified"), same.dig("sources", "provider_schemas", "last_modified")
+
+      changed = Fixtures.update(dir, Fixtures.downloads(zip: Fixtures.provider_bytes([ Fixtures.provider_schemas.fetch("AWS::Demo::Unlisted") ]))).meta
+      refute_equal first["schema_version"], changed["schema_version"]
+      assert_equal "resource specification 1.2.3", changed["schema_version"].split(",").first
     end
   end
 
@@ -139,18 +167,33 @@ class SourcesUpdateTest < Minitest::Test
       result = Fixtures.update(dir)
 
       assert result.changed
-      assert_equal [META, MODEL], Dir.children(dir).sort
+      assert_equal [ META, MODEL ], Dir.children(dir).sort
+      assert_equal result.meta, JSON.parse(File.read(File.join(dir, META)))
+    end
+  end
+
+  def test_a_meta_of_another_format_is_written_again_though_the_model_did_not_change
+    Fixtures.in_a_temporary_directory do |dir|
+      Fixtures.update(dir)
+      model = model_bytes(dir)
+      File.write(File.join(dir, META), JSON.generate({ "meta_format" => RubyCdk::Schema::META_FORMAT - 1, "model_sha256" => "stale" }))
+
+      result = Fixtures.update(dir)
+
+      assert result.changed
+      assert_equal model, model_bytes(dir)
       assert_equal result.meta, JSON.parse(File.read(File.join(dir, META)))
     end
   end
 
   def test_a_404_fails_loudly_and_writes_nothing
     Fixtures.in_a_temporary_directory do |dir|
-      gone = Fixtures.downloads(zip: Fixtures.download(Fixtures::PROVIDER_URL, "", status: 404))
+      gone = Fixtures.downloads
+      gone[:provider_schemas] = Fixtures.download(Fixtures::PROVIDER_URL, "", status: 404)
 
       error = assert_raises(Sources::SourceUnavailable) { Fixtures.update(dir, gone) }
 
-      assert_equal ["#{Fixtures::PROVIDER_URL}: HTTP 404. AWS has stopped publishing it there: see decision D-005"], error.problems
+      assert_equal [ "#{Fixtures::PROVIDER_URL}: HTTP 404. AWS has stopped publishing it there: see decision D-005" ], error.problems
       assert_match(/left as it is/, error.message)
       assert_empty Dir.children(dir)
     end
@@ -170,16 +213,14 @@ class SourcesUpdateTest < Minitest::Test
 
   def test_every_problem_is_reported_at_once
     Fixtures.in_a_temporary_directory do |dir|
-      broken = Fixtures.downloads(
-        zip: Fixtures.download(Fixtures::PROVIDER_URL, "", status: 403),
-        last_modified: Fixtures::NOW - 100 * DAY
-      )
+      broken = Fixtures.downloads(last_modified: Fixtures::NOW - 100 * DAY)
+      broken[:provider_schemas] = Fixtures.download(Fixtures::PROVIDER_URL, "", status: 403, last_modified: Fixtures::NOW - 100 * DAY)
 
       error = assert_raises(Sources::SourceUnavailable) { Fixtures.update(dir, broken) }
 
       assert_equal 2, error.problems.size
-      assert_match(/HTTP 403/, error.message)
-      assert_match(/days ago/, error.message)
+      assert_equal [ "#{Fixtures::PROVIDER_URL}: HTTP 403" ], error.problems.grep(/HTTP 403/)   # only a 404 gets the "gone" sentence
+      assert_match(/100 days ago, more than the 90 of decision D-005/, error.message)
       assert_empty Dir.children(dir)
     end
   end
@@ -221,6 +262,43 @@ class SourcesUpdateTest < Minitest::Test
     end
   end
 
+  # Offline, the task must say so in one line and leave what is on disk alone.
+  def test_a_source_that_cannot_be_reached_is_one_clear_line_and_leaves_the_model_alone
+    Fixtures.in_a_temporary_directory do |dir|
+      Fixtures.update(dir)
+      before = snapshot(dir)
+      offline = ->(_url) { raise SocketError, "getaddrinfo: Name or service not known" }
+
+      error = assert_raises(Sources::SourceUnavailable) { Sources.update(region: "us-east-1", dir:, get: offline) }
+
+      assert_equal [ "#{Fixtures::PROVIDER_URL}: could not be fetched (SocketError: getaddrinfo: Name or service not known)" ], error.problems
+      assert_match(/left as it is/, error.message)
+      assert_equal before, snapshot(dir)
+    end
+  end
+
+  def test_nothing_is_written_when_nothing_could_be_fetched
+    Fixtures.in_a_temporary_directory do |dir|
+      offline = ->(_url) { raise Errno::ECONNREFUSED, "Connection refused" }
+
+      error = assert_raises(Sources::SourceUnavailable) { Sources.update(region: "us-east-1", dir:, get: offline) }
+
+      assert_match(/could not be fetched \(Errno::ECONNREFUSED/, error.message)
+      assert_empty Dir.children(dir)
+    end
+  end
+
+  def test_an_error_of_our_own_is_not_disguised_as_a_network_failure
+    Fixtures.in_a_temporary_directory do |dir|
+      deliberate = ->(_url) { raise RubyCdk::Error, "deliberate" }
+
+      error = assert_raises(RubyCdk::Error) { Sources.update(region: "us-east-1", dir:, get: deliberate) }
+
+      assert_equal "deliberate", error.message
+      assert_empty Dir.children(dir)
+    end
+  end
+
   def test_an_unknown_region_is_refused_before_anything_is_asked_for
     Fixtures.in_a_temporary_directory do |dir|
       asked = []
@@ -243,6 +321,7 @@ class SourcesUpdateTest < Minitest::Test
       assert_match(/model: 4 types \(1 only in the provider schemas, 2 only in the specification\)/, summary)
       assert_match(/bytes of JSON, \d+ bytes gzipped; sha256 [0-9a-f]{64}/, summary)
       assert_match(/wrote .*model\.json\.gz and .*META\.json/, summary)
+      assert_match(/schema_version: resource specification 1\.2\.3, model sha256:[0-9a-f]{64}, model format 1/, summary)
     end
   end
 end

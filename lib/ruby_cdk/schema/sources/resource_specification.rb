@@ -18,6 +18,10 @@ module RubyCdk
         CONTAINERS = %w[List Map].freeze
         TOP_LEVEL = %w[PropertyTypes ResourceTypes ResourceSpecificationVersion].freeze
 
+        # How many list or map property types may sit on top of each other before the
+        # lookup gives up: a guard against a specification that refers to itself.
+        MAX_INDIRECTIONS = 10
+
         class << self
           # bytes: the gzip as published. Plain JSON is read as well.
           def parse(bytes)
@@ -70,12 +74,19 @@ module RubyCdk
           name = property["ItemType"] || (property["Type"] unless CONTAINERS.include?(property["Type"]))
           return nil unless name.is_a?(String)
 
-          type = property_type(resource_type, name)
-          while type.is_a?(Hash) && CONTAINERS.include?(type["Type"])
-            item = type["ItemType"]
-            type = item.is_a?(String) ? property_type(resource_type, item) : nil
-          end
-          type.is_a?(Hash) ? type["Properties"] : nil
+          held_by(resource_type, property_type(resource_type, name))
+        end
+
+        private
+
+        # The named properties of a property type. One that is itself a list or a map
+        # ("AWS::LakeFormation::DataLakeSettings.Admins") is followed to what it holds.
+        def held_by(resource_type, type, depth = 0)
+          return nil unless type.is_a?(Hash) && depth < MAX_INDIRECTIONS
+          return type["Properties"] unless CONTAINERS.include?(type["Type"])
+
+          item = type["ItemType"]
+          item.is_a?(String) ? held_by(resource_type, property_type(resource_type, item), depth + 1) : nil
         end
       end
     end

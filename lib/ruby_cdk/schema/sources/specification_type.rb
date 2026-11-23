@@ -38,7 +38,7 @@ module RubyCdk
 
         # For properties only the specification knows: { "Name" => property, ... }.
         def extra(properties)
-          entries = properties.map { |name, property| [name, entry(property)] }
+          entries = properties.map { |name, property| [ name, entry(property) ] }
           drain
           Extra.new(entries:, definitions: @definitions)
         end
@@ -48,7 +48,7 @@ module RubyCdk
           resource = @specification.resource_type(@type_name) or
             raise RubyCdk::Error, "the resource specification does not describe #{@type_name}"
           properties = resource["Properties"] || {}
-          entries = properties.map { |name, property| [name, entry(property)] }
+          entries = properties.map { |name, property| [ name, entry(property) ] }
           drain
 
           type = {
@@ -147,7 +147,7 @@ module RubyCdk
             properties = type["Properties"]
             @definitions[name] = {
               "required" => properties.select { |_, property| property["Required"] }.keys.sort,
-              "properties" => properties.map { |property_name, property| [property_name, entry(property)] }
+              "properties" => properties.map { |property_name, property| [ property_name, entry(property) ] }
             }
           end
         end

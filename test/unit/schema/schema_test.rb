@@ -44,6 +44,17 @@ class SchemaTest < Minitest::Test
     assert_equal :unknown, Schema.update_type("AWS::No::Such", "Nope")
   end
 
+  def test_schema_version_names_the_specification_and_the_model
+    version = Schema.schema_version
+    meta = Schema.meta
+
+    assert_equal meta["schema_version"], version
+    assert_equal "resource specification #{meta["specification_version"]}, model sha256:#{meta["model_sha256"]}, model format #{Schema::MODEL_FORMAT}", version
+    # A source AWS republished with the same content moves its Last-Modified, not this.
+    refute_includes version, meta.dig("sources", "provider_schemas", "last_modified")
+    assert_same version, Schema.schema_version
+  end
+
   def test_meta_matches_the_model_file
     meta = Schema.meta
     json = Zlib.gunzip(File.binread(File.join(Schema.dir, Schema::MODEL_FILE)))
@@ -60,6 +71,7 @@ class SchemaTest < Minitest::Test
     assert_equal counts.fetch("types"), counts.fetch("provider_schemas") + counts.fetch("only_resource_specification")
     assert_equal counts.fetch("types"), counts.fetch("resource_specification") + counts.fetch("only_provider_schemas")
     assert_match(/\A\d+\.\d+\.\d+\z/, meta.fetch("specification_version"))
+    assert_equal Schema::MODEL_FORMAT, meta.fetch("model_format")
   end
 
   def test_loading_the_committed_model_stays_within_the_budget
@@ -97,7 +109,7 @@ class SchemaTest < Minitest::Test
   end
 
   def test_a_model_that_is_not_a_gzip_of_json_is_a_clear_error
-    ["not a gzip", Zlib.gzip("not json")].each do |bytes|
+    [ "not a gzip", Zlib.gzip("not json") ].each do |bytes|
       Fixtures.in_a_temporary_directory do |dir|
         File.binwrite(File.join(dir, Schema::MODEL_FILE), bytes)
         File.write(File.join(dir, Schema::META_FILE), "{}")
@@ -126,7 +138,7 @@ class SchemaTest < Minitest::Test
       { "kind" => "string", "update" => "eventually" } => /unknown update behaviour, "eventually"/
     }.each do |entry, expected|
       Fixtures.in_a_temporary_directory do |dir|
-        write_model(dir, { "format" => Schema::MODEL_FORMAT, "types" => { "AWS::Demo::One" => { "source" => "provider", "properties" => [["P", entry]] } } })
+        write_model(dir, { "format" => Schema::MODEL_FORMAT, "types" => { "AWS::Demo::One" => { "source" => "provider", "properties" => [ [ "P", entry ] ] } } })
 
         error = assert_raises(RubyCdk::Error) { Schema::Model.load(dir).type("AWS::Demo::One") }
 
@@ -143,6 +155,9 @@ class SchemaTest < Minitest::Test
 
       File.write(File.join(dir, Schema::META_FILE), "not json")
       assert_match(/META\.json is not JSON/, assert_raises(RubyCdk::Error) { Schema::Model.load(dir) }.message)
+
+      File.write(File.join(dir, Schema::META_FILE), "{}")
+      assert_match(/META\.json has no schema_version/, assert_raises(RubyCdk::Error) { Schema::Model.load(dir).schema_version }.message)
     end
   end
 

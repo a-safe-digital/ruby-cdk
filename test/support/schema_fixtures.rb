@@ -81,9 +81,10 @@ module SchemaFixtures
     }
   end
 
-  # A stand-in for Fetcher that answers from { url => Download } and fails on any other address.
+  # A stand-in for Fetcher that answers from the downloads Hash and fails on any other address.
   def get(from)
-    ->(url) { from.fetch(url) { raise "nothing was prepared for #{url}" } }
+    by_url = from.values.to_h { |download| [ download.url, download ] }
+    ->(url) { by_url.fetch(url) { raise "nothing was prepared for #{url}" } }
   end
 
   # What `rake spec:update` does, on the fixtures. from is the downloads Hash.

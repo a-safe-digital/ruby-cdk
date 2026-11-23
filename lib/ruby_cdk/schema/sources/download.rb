@@ -25,7 +25,7 @@ module RubyCdk
         # problems: one line per thing that is wrong.
         def initialize(problems)
           @problems = problems.freeze
-          super([ "a schema source is gone or stale, so data/spec was left as it is:", *problems.map { |problem| "  - #{problem}" } ].join("\n"))
+          super([ "a schema source cannot be reached, is gone or is stale, so data/spec was left as it is:", *problems.map { |problem| "  - #{problem}" } ].join("\n"))
         end
       end
 
@@ -49,7 +49,7 @@ module RubyCdk
         # META.json is what `curl URL | shasum -a 256` prints.
         def call(url)
           uri = URI.parse(url)
-          request = Net::HTTP::Get.new(uri.request_uri)
+          request = Net::HTTP::Get.new(uri)
           request["Accept-Encoding"] = "gzip"
           response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT) do |http|
             http.request(request)

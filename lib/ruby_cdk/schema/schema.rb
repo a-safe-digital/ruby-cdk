@@ -14,6 +14,12 @@ module RubyCdk
     # The shape of the model. It changes only in a way an older loader cannot read.
     MODEL_FORMAT = 1
 
+    # The shape of META.json. It changes only when the task starts recording something
+    # new there, which is why a META of another format is written again even though the
+    # model did not change. 2: schema_version no longer carries the provider zip's
+    # Last-Modified.
+    META_FORMAT = 2
+
     # The kinds of a value, as the architecture lists them.
     KINDS = %i[string integer long double boolean timestamp json list map nested].freeze
     UPDATE_BEHAVIOURS = %i[mutable immutable conditional unknown].freeze
@@ -45,9 +51,17 @@ module RubyCdk
         model.types
       end
 
-      # The parsed META.json: the region, both sources, the counts and the model's SHA-256.
+      # The parsed META.json: the region, both sources, the counts, the model's SHA-256 and
+      # its schema_version.
       def meta
         model.meta
+      end
+
+      # What the manifest records as schema_version: one String naming the version of each
+      # source and the model that was consulted. The same on every machine that has the
+      # same gem, and different only when the model is.
+      def schema_version
+        model.schema_version
       end
 
       # :mutable, :immutable, :conditional, or :unknown. See TypeSchema#update_behaviour.
@@ -126,6 +140,11 @@ module RubyCdk
       def update_type(type, path)
         schema = type(type)
         schema ? schema.update_behaviour(path) : :unknown
+      end
+
+      # See Schema.schema_version.
+      def schema_version
+        @meta["schema_version"] or raise RubyCdk::Error, "#{File.join(dir, META_FILE)} has no schema_version: rebuild it with `rake spec:update`"
       end
 
       private
