@@ -26,8 +26,13 @@ module Tools
     DEFAULT_COUNT = 400
     # A service with this many templates in the corpus is always in the sample.
     MIN_STRATUM = 5
-    # The sample is a function of the paths and of this, and of nothing else. Changing it chooses
-    # a different sample from the same corpus.
+    # How many templates without a Resources key the default sample holds at most, and why.
+    WITHOUT_RESOURCES_CAP = 50
+    WITHOUT_RESOURCES_CAP_REASON = "A stack without Resources is valid CloudFormation and the validator must accept it, " \
+      "but it exercises no resource type, so the seats it does not take go to templates that have Resources."
+    # Which templates are chosen is a function of their paths and of this, and of nothing else:
+    # not of their order, of the machine, of Ruby's hashing or of the clock. Changing it chooses a
+    # different sample from the same corpus.
     SEED = "ruby-cdk-corpus-v1"
     # The longest file name in the sample. A longer one would put a checkout of this repository
     # past the 260 characters Windows allows for a path.
@@ -39,8 +44,6 @@ module Tools
     # counterparts in the alpha packages.
     FRAMEWORK_INTEG = "packages/@aws-cdk-testing/framework-integ/"
 
-    # What `packages/` holds: the segment that starts a repository path, wherever it sits.
-    PACKAGES = %r{\Apackages/|/packages/}
     # The packages that hold one directory per module rather than being one. A scope (@aws-cdk,
     # @aws-cdk-testing) is not part of a module's name.
     COLLECTIONS = %w[aws-cdk-lib framework-integ].freeze
@@ -51,9 +54,11 @@ module Tools
     class << self
       ## What a template uses
 
-      # The CloudFormation resource types a template declares, sorted and without repeats. The
-      # resources of a template nested in another one (a stack's TemplateBody) count with it. A
-      # property that happens to be called Type does not.
+      # The CloudFormation resource types a template declares, sorted and without repeats: the
+      # Type of every resource, at the top of the template or in a template nested in it (a
+      # stack's TemplateBody). A property that happens to be called Type does not count, and
+      # neither does an object that merely has a key called Resources and no resource under it,
+      # such as a Kubernetes container's resource requirements.
       def resource_types(template)
         found = []
         each_node(template) do |node|
@@ -83,18 +88,13 @@ module Tools
       ## Where a template comes from
 
       # The CDK module a template is in: the integration module under framework-integ, the module
-      # under aws-cdk-lib, or else the package itself. nil for anything outside packages/, and for
-      # a file that sits in no module directory of a collection.
+      # under aws-cdk-lib, or else the package the template is in. nil for anything outside a
+      # package, and for a file that sits in no module directory of a collection.
       def module_of(path)
-        parts = parts_after_packages(path)
-        return nil unless parts
+        package, parts = package_of(path)
+        return nil unless package
+        return package unless COLLECTIONS.include?(package)
 
-        parts.shift if parts.first.start_with?("@")
-        unless COLLECTIONS.include?(parts.first)
-          return parts.one? ? nil : parts.first
-        end
-
-        parts.shift
         parts.shift if parts.first == "test"
         parts.one? ? nil : parts.first
       end
@@ -121,17 +121,25 @@ module Tools
       # stratified by service. Every service that has MIN_STRATUM templates is represented, and
       # the rest of the count goes proportionally. Within a service the templates with the
       # smallest sample_key are taken, so nothing is reshuffled when the corpus grows.
-      def select_sample(templates, count: DEFAULT_COUNT)
+      #
+      # without_resources names the templates that have no Resources key; the sample then holds at
+      # most at_most of them. One too many gives way, those with the largest key first, to the
+      # next template of its service that has Resources; it is left out when its service has
+      # none left, and no service loses a seat to another. A corpus that fits in the count is
+      # the sample, uncapped.
+      def select_sample(templates, count: DEFAULT_COUNT, without_resources: nil, at_most: 0)
         paths = templates.map(&:to_s).uniq.sort
-        return paths.map { |path| [path, service_of(path)] } if paths.size <= count
+        return paths.map { |path| [ path, service_of(path) ] } if paths.size <= count
         return [] unless count.positive?
 
         services = paths.group_by { |path| service_of(path) }
         seats = seats_for(services, count)
-        services.flat_map do |service, members|
-          ordered = members.sort_by { |path| [sample_key(path), path] }
-          ordered.first(seats.fetch(service)).map { |path| [path, service] }
-        end.sort_by(&:first)
+        ordered = services.to_h do |service, members|
+          [ service, members.sort_by { |path| [ sample_key(path), path ] } ]
+        end
+        taken = ordered.flat_map { |service, members| members.first(seats.fetch(service)).map { |path| [ path, service ] } }
+
+        capped(taken, ordered, without_resources, at_most).sort_by(&:first)
       end
 
       # The file name a template takes in the sample: its whole path with every "/" doubled, so
@@ -153,7 +161,7 @@ module Tools
       # Every template below root, as { path under root => file on disk }, in path order. The
       # shape write_sample takes.
       def templates_in(root)
-        template_files_in(root).to_h { |path| [path, File.join(root, path)] }
+        template_files_in(root).to_h { |path| [ path, File.join(root, path) ] }
       end
 
       # Each template of the committed sample, in path order, as the file that load parses.
@@ -173,16 +181,23 @@ module Tools
       # of the corpus in destination/META.json. A file is written only when its bytes differ from
       # what is there; nothing else under destination is touched.
       #
-      # templates is what templates_in answers. Answers the META.json content as :meta, how many
-      # template files were :written, :rewritten and :unchanged, whether META.json itself was
-      # written (:meta_written), and the files of an earlier sample that are no longer selected
-      # (:stale).
+      # templates is what templates_in answers. The sample holds at most WITHOUT_RESOURCES_CAP of
+      # the templates without a Resources key, in proportion to the count, and META.json says so
+      # next to how many it holds.
+      #
+      # Answers the META.json content as :meta, how many template files were :written, :rewritten
+      # and :unchanged, whether META.json itself was written (:meta_written), and the files of an
+      # earlier sample that are no longer selected (:stale).
       def write_sample(destination:, templates:, commit:, date:, count: DEFAULT_COUNT)
         # A file that does not parse is no template: it is counted, and left out of the sample.
-        parsed = templates.to_h { |path, file| [path, parse(file)] }
+        parsed = templates.to_h { |path, file| [ path, parse(file) ] }
         loadable = parsed.compact
         files = templates.slice(*loadable.keys)
-        sample = select_sample(files.keys, count:)
+        bare = loadable.reject { |_, template| template.key?("Resources") }.keys
+        at_most = count * WITHOUT_RESOURCES_CAP / DEFAULT_COUNT
+        # The cap is in force where there is a choice to make; a corpus that fits is all taken.
+        capped = files.size > count
+        sample = select_sample(files.keys, count:, without_resources: bare, at_most:)
 
         names = sample.map { |path, service| "#{service}/#{sample_name(path)}" }
         unless names.map(&:downcase).uniq.size == names.size
@@ -196,7 +211,11 @@ module Tools
           outcomes[write_if_changed(target, File.binread(files.fetch(path)))] += 1
         end
 
-        selected = sample.map(&:first)
+        taken = sample.map(&:first)
+        about_sample = describe(taken, files, parsed, resource_types_in(taken, parsed))
+        if capped
+          about_sample.merge!("without_resources_cap" => at_most, "without_resources_cap_reason" => WITHOUT_RESOURCES_CAP_REASON)
+        end
         meta = {
           "commit" => commit,
           "date" => date,
@@ -204,7 +223,7 @@ module Tools
             "framework_integ" => templates.keys.count { |path| path.start_with?(FRAMEWORK_INTEG) },
             "unparseable" => templates.size - files.size
           ),
-          "sample" => describe(selected, files, parsed, resource_types_in(selected, parsed))
+          "sample" => about_sample
         }
         meta_file = File.join(destination, "META.json")
         meta_written = write_if_changed(meta_file, JSON.pretty_generate(meta) << "\n") != :unchanged
@@ -246,13 +265,17 @@ module Tools
 
       ## Where a template comes from
 
-      # The path's segments after packages/; nil when it has none.
-      def parts_after_packages(path)
-        text = path.to_s
-        match = PACKAGES.match(text)
-        return nil unless match
+      # A template's package: its name, and the path's segments below it. The CDK keeps its
+      # packages under packages/ and one scoped package under tools/, so a scoped package is
+      # recognised wherever it sits, and anything else from its packages/ segment on.
+      # [nil, nil] for a path in no package.
+      def package_of(path)
+        parts = path.to_s.split("/")
+        scope = parts.index { |part| part.start_with?("@") }
+        head = scope ? scope + 1 : parts.index("packages")&.+(1)
+        return [ nil, nil ] unless head
 
-        text[match.end(0)..].split("/")
+        [ parts[head], parts.drop(head + 1) ]
       end
 
       ## The sample
@@ -262,9 +285,9 @@ module Tools
       # and the rest in proportion to size. The proportional seats are shared by the largest
       # remainder method, in integers, so that no rounding can move one.
       def seats_for(services, count)
-        represented = services.sort_by { |service, members| [-members.size, service] }
+        represented = services.sort_by { |service, members| [ -members.size, service ] }
           .select { |_, members| members.size >= MIN_STRATUM }.map(&:first).first(count)
-        seats = services.to_h { |service, _| [service, 0] }
+        seats = services.to_h { |service, _| [ service, 0 ] }
         represented.each { |service| seats[service] = 1 }
         spare = count - represented.size
         return seats if spare.zero?
@@ -272,13 +295,32 @@ module Tools
         total = services.values.sum(&:size)
         shares = services.to_h do |service, members|
           whole, remainder = (spare * members.size).divmod(total)
-          [service, [whole, remainder]]
+          [ service, [ whole, remainder ] ]
         end
-        owed = services.keys.sort_by { |service| [-shares.fetch(service).last, -services.fetch(service).size, service] }
+        owed = services.keys.sort_by { |service| [ -shares.fetch(service).last, -services.fetch(service).size, service ] }
         left = spare - shares.values.sum(&:first)
         owed.first(left).each { |service| shares.fetch(service)[0] += 1 }
 
         seats.merge(shares.transform_values(&:first)) { |_, at_least_one, share| at_least_one + share }
+      end
+
+      # The taken templates with at most at_most of those in without_resources. The ones beyond
+      # it, with the largest key first, give way to the next template of their service that is
+      # neither; one is left out when its service has none to give.
+      def capped(taken, ordered, without_resources, at_most)
+        return taken unless without_resources
+
+        few = without_resources.to_h { |path| [ path, true ] }
+        by_path = taken.to_h { |path, service| [ path, service ] }
+        over = by_path.count { |path, _| few[path] } - at_most
+        return taken unless over.positive?
+
+        by_path.keys.select { |path| few[path] }.sort_by { |path| [ sample_key(path), path ] }.last(over).each do |path|
+          service = by_path.delete(path)
+          replacement = ordered.fetch(service).find { |candidate| !few[candidate] && !by_path.key?(candidate) }
+          by_path[replacement] = service if replacement
+        end
+        by_path.map { |path, service| [ path, service ] }
       end
 
       ## Files
