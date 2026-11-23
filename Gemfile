@@ -5,7 +5,7 @@ source "https://rubygems.org"
 # Runtime dependencies are declared in ruby-cdk.gemspec. Adding one needs the owner's approval.
 gemspec
 
-gem "minitest", "~> 5.25"
+gem "minitest", "~> 6.1"
 gem "rake"
 
 # Line coverage; the floor is enforced by `rake coverage:check`.

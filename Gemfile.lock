@@ -62,7 +62,9 @@ GEM
     language_server-protocol (3.17.0.6)
     lint_roller (1.1.0)
     logger (1.7.0)
-    minitest (5.27.0)
+    minitest (6.1.0)
+      drb (~> 2.0)
+      prism (>= 1.5, < 3)
     netrc (0.11.0)
     parallel (2.3.0)
     parser (3.3.14.0)
@@ -114,6 +116,7 @@ GEM
       rubocop-performance (>= 1.24)
       rubocop-rails (>= 2.30)
     ruby-progressbar (1.13.0)
+    rubydex (0.4.4)
     rubydex (0.4.4-aarch64-linux)
     rubydex (0.4.4-arm64-darwin)
     rubydex (0.4.4-x86_64-darwin)
@@ -172,7 +175,7 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
-  minitest (~> 5.25)
+  minitest (~> 6.1)
   rake
   rubocop-rails-omakase
   ruby-cdk!
@@ -204,7 +207,7 @@ CHECKSUMS
   language_server-protocol (3.17.0.6) sha256=5ef2c0c138f8267e1bc631d3328347d354f96724b0af22f2c79516120443b7f0
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
-  minitest (5.27.0) sha256=2d3b17f8a36fe7801c1adcffdbc38233b938eb0b4966e97a6739055a45fa77d5
+  minitest (6.1.0) sha256=ff373595aa8888631e8a5463986a76b3845346ae6d7fa46e139c1633d418076e
   netrc (0.11.0) sha256=de1ce33da8c99ab1d97871726cba75151113f117146becbe45aa85cb3dabee3f
   parallel (2.3.0) sha256=f75a3e904101ce6a1ccb6b8dc800cbafd42166d83330192438dcf29395167a6f
   parser (3.3.14.0) sha256=62f8f76af7b919425ee2d811880e9dcb8011ab40bfd59970dfb583141697e58f
@@ -225,6 +228,7 @@ CHECKSUMS
   rubocop-rails-omakase (1.1.0) sha256=2af73ac8ee5852de2919abbd2618af9c15c19b512c4cfc1f9a5d3b6ef009109d
   ruby-cdk (0.0.1)
   ruby-progressbar (1.13.0) sha256=80fc9c47a9b640d6834e0dc7b3c94c9df37f08cb072b7761e4a71e22cff29b33
+  rubydex (0.4.4) sha256=f506bcc9f4ef4c55ac1312392410f95392ce919a4c0b0c36a18f243969bdd2ba
   rubydex (0.4.4-aarch64-linux) sha256=3638b08b7d683f264eb3215e86974c0f2458c7d63e4aab0c772d625e9e0392ea
   rubydex (0.4.4-arm64-darwin) sha256=e593b7a2b820e3d91ba3d6b7371916efe7c742b75d44f6eaa39cd04546211c09
   rubydex (0.4.4-x86_64-darwin) sha256=596c0820bc12c475321550dbb3320d8fe7f08f2f068565884ba3a02ca39acb50
