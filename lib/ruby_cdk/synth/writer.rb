@@ -17,14 +17,14 @@ module RubyCdk
         File.binwrite(path, bytes)
         true
       rescue SystemCallError => e
-        raise UsageError, "Cannot write #{path}: #{e.message}"
+        Kernel.raise UsageError, "Cannot write #{path}: #{e.message}"
       end
 
       # Makes path, and every directory above it that is missing.
       def mkdir(path)
         FileUtils.mkdir_p(path)
       rescue SystemCallError => e
-        raise UsageError, "Cannot create the directory #{path}: #{e.message}"
+        Kernel.raise UsageError, "Cannot create the directory #{path}: #{e.message}"
       end
     end
   end

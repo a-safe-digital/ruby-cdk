@@ -6,6 +6,9 @@ require_relative "stateful"
 module RubyCdk
   # The root of the tree.
   class App < Construct
+    # Where synthesis writes when neither the app file nor the command says.
+    DEFAULT_OUT_DIR = "cdk.out"
+
     attr_reader :env, :out_dir, :stack_name_prefix, :stateful_default
 
     class << self
@@ -26,13 +29,21 @@ module RubyCdk
 
       # Loads the app file and returns the one App it created. May be called
       # again in the same process: each call builds a new App and makes it current.
-      def build!(app_file:)
+      #
+      # out_dir is where the command that called wants its files written, as
+      # the value of `--out`. An App the file creates with an explicit
+      # out_dir: keeps its own; one it creates without takes this; and without
+      # this either, DEFAULT_OUT_DIR.
+      def build!(app_file:, out_dir: nil)
         path = File.expand_path(app_file.to_s)
         unless File.file?(path)
           raise UsageError, "There is no app file at #{path}"
         end
+        if out_dir && !(out_dir.is_a?(String) && !out_dir.empty?)
+          raise UsageError, "App.build!: out_dir must be the path of a directory or nil, got #{out_dir.inspect}"
+        end
 
-        created = newly_created { evaluate_app_file(path) }
+        created = with_out_dir_of_command(out_dir) { newly_created { evaluate_app_file(path) } }
         case created.length
         when 1
           @current = created.first
@@ -48,6 +59,14 @@ module RubyCdk
         load(path)
       end
 
+      # The directory the command asked for while the app file runs, as the
+      # out_dir: given to build!. nil the rest of the time, so that an App
+      # created outside a command writes under DEFAULT_OUT_DIR. It is read,
+      # never written: build! sets it for the duration of the app file only.
+      def out_dir_of_command
+        @out_dir_of_command
+      end
+
       # Every App created in this process, in creation order.
       def instances
         (@instances ||= []).dup.freeze
@@ -58,6 +77,7 @@ module RubyCdk
       def reset!
         @instances = []
         @current = nil
+        @out_dir_of_command = nil
         nil
       end
 
@@ -74,14 +94,26 @@ module RubyCdk
         yield
         (@instances || []).drop(before)
       end
+
+      # The block runs with the command's directory in place, and whatever
+      # happens in it, including an app file that raises, the value there
+      # before is put back: nothing carries over to the next build!.
+      def with_out_dir_of_command(out_dir)
+        before = @out_dir_of_command
+        @out_dir_of_command = out_dir
+        yield
+      ensure
+        @out_dir_of_command = before
+      end
     end
 
-    def initialize(env: nil, out_dir: "cdk.out", stack_name_prefix: nil, stateful_default: :retain_except_on_create, &block)
+    def initialize(env: nil, out_dir: nil, stack_name_prefix: nil, stateful_default: :retain_except_on_create, &block)
       if env && !env.is_a?(Env)
         raise UsageError, "App.new: env must be a RubyCdk::Env, got #{env.inspect}"
       end
-      unless out_dir.is_a?(String) && !out_dir.empty?
-        raise UsageError, "App.new: out_dir must be the path of a directory, got #{out_dir.inspect}"
+      directory = out_dir || App.out_dir_of_command || DEFAULT_OUT_DIR
+      unless directory.is_a?(String) && !directory.empty?
+        raise UsageError, "App.new: out_dir must be the path of a directory or nil, got #{out_dir.inspect}"
       end
       unless stack_name_prefix.nil? || stack_name_prefix.is_a?(String)
         raise UsageError, "App.new: stack_name_prefix must be a String or nil, got #{stack_name_prefix.inspect}"
@@ -89,7 +121,7 @@ module RubyCdk
 
       super(nil, "App")
       @env = env
-      @out_dir = out_dir
+      @out_dir = directory
       @stack_name_prefix = stack_name_prefix
       @stateful_default = Core::Stateful.validate_default!(stateful_default)
       App.register(self)

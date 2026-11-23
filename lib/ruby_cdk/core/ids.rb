@@ -19,15 +19,15 @@ module RubyCdk
       def validate_id!(id, scope: nil)
         where = scope ? " under #{scope.path}" : ""
         unless id.is_a?(String) || id.is_a?(Symbol)
-          raise UsageError, "The id of a construct#{where} must be a String or a Symbol, got #{id.inspect}"
+          Kernel.raise UsageError, "The id of a construct#{where} must be a String or a Symbol, got #{id.inspect}"
         end
 
         name = id.is_a?(Symbol) ? id.name : id
         if name.length > Construct::MAX_ID_LENGTH
-          raise UsageError, "The id \"#{name[0, 32]}...\"#{where} is longer than #{Construct::MAX_ID_LENGTH} characters"
+          Kernel.raise UsageError, "The id \"#{name[0, 32]}...\"#{where} is longer than #{Construct::MAX_ID_LENGTH} characters"
         end
         unless Construct::ID_PATTERN.match?(name)
-          raise UsageError, "The id #{name.inspect}#{where} is not valid: an id holds letters, digits, \"_\" and \"-\", and at least one of them"
+          Kernel.raise UsageError, "The id #{name.inspect}#{where} is not valid: an id holds letters, digits, \"_\" and \"-\", and at least one of them"
         end
 
         name
@@ -37,13 +37,9 @@ module RubyCdk
       # Stack down to the node, joined. A node directly in a Stack keeps its own
       # id; `Api.new(stack, "Api")` creating `Role` gives `ApiRole`.
       def logical_id(node)
-        ids = []
-        current = node
-        while current.is_a?(Construct) && !current.is_a?(Stack) && !current.is_a?(App)
-          ids << current.id
-          current = current.scope
-        end
-        ids.reverse.join
+        return "" if node.is_a?(Stack) || node.is_a?(App) || !node.is_a?(Construct)
+
+        "#{logical_id(node.scope)}#{node.id}"
       end
 
       # The logical ID a reference stands for: a String, a Symbol, a resource
@@ -54,7 +50,7 @@ module RubyCdk
         return target.name if target.is_a?(Symbol)
         return target.logical_id if target.respond_to?(:logical_id)
 
-        raise UsageError, "#{what} takes a resource, a parameter or a logical ID, got #{target.inspect}"
+        Kernel.raise UsageError, "#{what} takes a resource, a parameter or a logical ID, got #{target.inspect}"
       end
 
       # The name a `condition:` stands for: a String, a Symbol or a condition the
@@ -64,7 +60,7 @@ module RubyCdk
         return condition if condition.is_a?(String)
         return condition.name if condition.is_a?(Symbol) || condition.is_a?(Condition)
 
-        raise UsageError, "#{what} takes a condition the stack declared, or its name, got #{condition.inspect}"
+        Kernel.raise UsageError, "#{what} takes a condition the stack declared, or its name, got #{condition.inspect}"
       end
     end
   end

@@ -38,6 +38,12 @@ module RubyCdk
       @children.dup.freeze
     end
 
+    # Short, so that an error message shows where a node is and not its whole tree:
+    # "#<RubyCdk::Cfn::Resource App/blog/Table>".
+    def inspect
+      "#<#{self.class.name} #{path}>"
+    end
+
     # Validates the id and rejects duplicates among siblings. Returns node.
     def add(node)
       unless node.is_a?(Construct)
@@ -55,9 +61,9 @@ module RubyCdk
 
     # The nearest enclosing Stack, or nil when there is none.
     def stack
-      node = self
-      node = node.scope while node && !node.is_a?(Stack)
-      node
+      return self if is_a?(Stack)
+
+      scope&.stack
     end
 
     # Hook, children first. Curated constructs add implicit resources here.

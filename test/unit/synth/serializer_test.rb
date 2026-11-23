@@ -158,7 +158,8 @@ class SynthSerializerTest < CoreHelpers::TestCase
   end
 
   def test_what_is_written_is_only_what_json_requires
-    bytes = Serializer.call({ "Text" => "<b>&'\"\\\\/é\n\t", "Empty" => [], "None" => {}, "List" => [] })
+    # One backslash before the slash, a double quote, a line feed and a tab in the value.
+    bytes = Serializer.render({ "Text" => "<b>&'\"\\/é\n\t", "Empty" => [], "None" => {}, "List" => [] })
 
     assert_equal <<~JSON, bytes
       {
@@ -181,7 +182,7 @@ class SynthSerializerTest < CoreHelpers::TestCase
         "F": false,
         "F1": 1.0,
         "F2": 0.30000000000000004,
-        "F3": 1.0e+20
+        "F3": 1e+20
       }
     JSON
   end
@@ -236,7 +237,7 @@ class SynthSerializerTest < CoreHelpers::TestCase
           }
         },
         "Metadata": {
-          "A" => 1
+          "A": 1
         },
         "Transform": "AWS::Serverless-2016-10-31"
       }
@@ -271,11 +272,12 @@ class SynthSerializerTest < CoreHelpers::TestCase
     assert_equal "{}\n", Serializer.render({})
   end
 
-  def test_a_template_that_is_not_plain_data_is_an_error_and_not_a_wrong_file
-    [ { "A" => Object.new }, { "A" => :symbol }, { "A" => Float::NAN }, { "A" => Lazy.new { 1 } } ].each do |template|
+  def test_a_template_that_is_not_plain_data_is_an_error_that_says_where_and_not_a_wrong_file
+    [ [ { "A" => Object.new }, "A" ], [ { "A" => :symbol }, "A" ], [ { "A" => Float::NAN }, "A" ],
+      [ { "A" => Lazy.new { 1 } }, "A" ], [ { "A" => [ { "B" => 2r } ] }, "A[0].B" ], [ { 1 => "one" }, "" ] ].each do |template, place|
       error = assert_raises(RubyCdk::Synth::SerializationError, template.inspect) { Serializer.call(template) }
 
-      assert_match(/a template holds only strings, numbers, booleans, arrays and hashes/, error.message)
+      assert_match(/\A#{Regexp.escape(place.empty? ? "the template" : place)}: (a key|a [\w:]+) is not plain data: .+ cannot be written\z/, error.message)
       assert_kind_of RubyCdk::Error, error
     end
   end

@@ -19,7 +19,7 @@ class CfnResourceTest < CoreHelpers::TestCase
     assert_equal "App/blog/Table", table.path
     assert_equal [ table ], stack.resources
     assert_equal [ table ], stack.children
-    assert_equal({ "KeySchema" => [], "TableName" => "data", "Timeout" => 10 }, table.properties)
+    assert_equal({ "KeySchema" => [], TableName: "data", Timeout: 10 }, table.properties)
     assert_equal [], table.depends_on
     assert_nil table.condition
     assert_nil table.deletion_policy
@@ -33,7 +33,8 @@ class CfnResourceTest < CoreHelpers::TestCase
       @hash = resource("B", "AWS::SQS::Queue", properties: { "VisibilityTimeout" => 30, "Condition" => "IsProd", "Metadata" => { "a" => 1 } })
     end
 
-    assert_equal({ "VisibilityTimeout" => 30 }, stack.instance_variable_get(:@keywords).properties)
+    # The keys are kept as the user wrote them until the template is resolved.
+    assert_equal({ VisibilityTimeout: 30 }, stack.instance_variable_get(:@keywords).properties)
     assert_equal({ "VisibilityTimeout" => 30, "Condition" => "IsProd", "Metadata" => { "a" => 1 } }, stack.instance_variable_get(:@hash).properties)
     assert_equal({}, build_stack { resource("C", "AWS::SQS::Queue") }.resources.first.properties)
   end
@@ -57,8 +58,7 @@ class CfnResourceTest < CoreHelpers::TestCase
     end
 
     assert_equal({ key_schema: [ { attribute_name: "pk" } ], "ExactName" => :value }, stack.instance_variable_get(:@resource).properties)
-    assert_equal({ key_schema: [ { attribute_name: "pk" } ], "ExactName" => "value", "DelaySeconds" => 1 },
-      stack.to_template["Resources"]["A"]["Properties"])
+    assert_equal({ "key_schema" => [ { "attribute_name" => "pk" } ], "ExactName" => "value" }, stack.to_template["Resources"]["A"]["Properties"])
   end
 
   def test_the_type_must_be_a_name

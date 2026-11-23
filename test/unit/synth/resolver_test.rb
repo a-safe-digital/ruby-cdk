@@ -18,6 +18,62 @@ class SynthResolverTest < CoreHelpers::TestCase
     end
   end
 
+  def test_every_section_a_stack_declares_is_written_as_its_own_template_section
+    stack = build_stack(stack_options: { description: "The blog", tags: { Team: "Platform" }, termination_protection: true }) do
+      parameter("Stage", type: "String", default: "prod", description: "Where", allowed_values: %w[ dev prod ])
+      parameter("Quiet", type: "String", no_echo: true)
+      parameter("Bare", type: "Number")
+      mapping("Regions", "eu" => { "west" => "eu-west-1" })
+      is_prod = condition("IsProd", Fn.equals(Fn.ref("Stage"), "prod"))
+      first = resource("First", "AWS::SNS::Topic")
+      resource("Second", "AWS::SQS::Queue", depends_on: [ first, "Stage" ])
+      export("TableName", value: "t", description: "Exported")
+      output("Plain", value: 1)
+      output("OnlyInProd", value: 2, condition: is_prod)
+      add_metadata("Notes", "none")
+    end
+
+    template = stack.to_template
+
+    assert_equal %w[AWSTemplateFormatVersion Description Parameters Mappings Conditions Resources Outputs Metadata], template.keys
+    assert_equal "The blog", template["Description"]
+    assert_equal({
+      "Stage" => { "Type" => "String", "Default" => "prod", "Description" => "Where", "AllowedValues" => %w[ dev prod ] },
+      "Quiet" => { "Type" => "String", "NoEcho" => true },
+      "Bare" => { "Type" => "Number" }
+    }, template["Parameters"])
+    assert_equal({ "Regions" => { "eu" => { "west" => "eu-west-1" } } }, template["Mappings"])
+    assert_equal({ "IsProd" => { "Fn::Equals" => [ { "Ref" => "Stage" }, "prod" ] } }, template["Conditions"])
+    assert_equal({ "First" => { "Type" => "AWS::SNS::Topic" }, "Second" => { "Type" => "AWS::SQS::Queue", "DependsOn" => %w[ First Stage ] } },
+      template["Resources"])
+    assert_equal({
+      "TableName" => { "Value" => "t", "Description" => "Exported", "Export" => { "Name" => "blog-TableName" } },
+      "Plain" => { "Value" => 1 },
+      "OnlyInProd" => { "Value" => 2, "Condition" => "IsProd" }
+    }, template["Outputs"])
+    assert_equal({ "Notes" => "none" }, template["Metadata"])
+
+    # Tags and termination protection are for the deploy, not for the template.
+    assert_equal({ "Team" => "Platform" }, stack.tags)
+    assert_equal true, stack.termination_protection
+    assert_equal false, JSON.generate(template).include?("Platform")
+  end
+
+  def test_the_sections_are_left_out_when_nothing_was_declared_for_them
+    template = build_stack(stack_options: { description: "" }) { output("Only", value: 1) }.to_template
+
+    assert_equal %w[AWSTemplateFormatVersion Outputs], template.keys
+  end
+
+  def test_an_output_whose_lazy_resolves_to_nil_is_an_issue
+    stack = build_stack { output("A", value: Lazy.new { nil }) }
+
+    error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
+
+    assert_equal [ "Outputs.A.Value" ], error.issues.map(&:path)
+    assert_match(/Outputs\.A\.Value: the output has no value/, error.message)
+  end
+
   def test_a_string_an_integer_a_float_and_a_boolean_are_written_as_they_are
     properties = properties_of(Name: "s", Count: 1, Ratio: 1.5, On: true, Off: false)
 
@@ -41,6 +97,21 @@ class SynthResolverTest < CoreHelpers::TestCase
     assert_equal({ "Type" => "AWS::SNS::Topic", "Properties" => { "TopicName" => "a" } }, template["Resources"]["A"])
     assert_equal({ "Type" => "AWS::SNS::Topic" }, template["Resources"]["B"])
     assert_equal({ "Type" => "AWS::SNS::Topic", "Properties" => { "Fifo" => false } }, template["Resources"]["C"])
+  end
+
+  def test_a_default_that_resolves_to_nil_leaves_its_key_out_too
+    template = build_stack do
+      parameter("Later", type: "String", default: Lazy.new { nil })
+      parameter("Empty", type: "String", default: "")
+      parameter("Bare", type: "String")
+    end.to_template
+
+    assert_equal({
+      "Later" => { "Type" => "String" },
+      "Empty" => { "Type" => "String", "Default" => "" },
+      "Bare" => { "Type" => "String" }
+    }, template["Parameters"])
+    assert_equal 3, JSON.parse(RubyCdk::Synth::Serializer.call(template))["Parameters"].length
   end
 
   def test_the_result_of_fn_is_already_what_the_template_holds
@@ -93,7 +164,7 @@ class SynthResolverTest < CoreHelpers::TestCase
     assert_equal 1, error.issues.length
     assert_equal "V0", error.issues.first.rule
     assert_equal "Resources.A.Properties.TopicName", error.issues.first.path
-    assert_match(/A chain of Lazy values deeper than 10 levels \(at most 10 Lazy values are followed\)/, error.message)
+    assert_match(/A chain of Lazy values deeper than 10 levels \(a Lazy at this place could not be evaluated\)/, error.message)
   end
 
   def test_a_lazy_that_leads_back_to_itself_is_reported_at_its_place_in_the_template
@@ -107,12 +178,27 @@ class SynthResolverTest < CoreHelpers::TestCase
     assert_match(/leads back to itself/, error.message)
   end
 
-  def test_an_error_from_inside_a_lazy_is_not_turned_into_an_issue
+  def test_a_lazy_that_raises_a_ruby_cdk_error_is_an_issue_like_any_other
+    stack = build_stack do
+      resource("Fn", "AWS::Lambda::Function", "Code" => Lazy.new { raise RubyCdk::UsageError, "the directory lambda/blog does not exist" })
+      resource("Other", "AWS::SQS::Queue", QueueName: Object.new)
+    end
+
+    error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
+
+    assert_equal [ "V0", "V0" ], error.issues.map(&:rule)
+    assert_equal [ "Resources.Fn.Properties.Code", "Resources.Other.Properties.QueueName" ], error.issues.map(&:path)
+    assert_equal "V0 Resources.Fn.Properties.Code: the directory lambda/blog does not exist (a Lazy at this place could not be evaluated)",
+      error.message.lines.first.chomp
+  end
+
+  def test_an_error_from_inside_a_lazy_that_is_not_a_ruby_cdk_error_leaves_with_its_backtrace
     stack = build_stack { resource("A", "AWS::SNS::Topic", TopicName: Lazy.new { raise "the user's bug" }) }
 
     error = assert_raises(RuntimeError) { stack.to_template }
 
     assert_equal "the user's bug", error.message
+    assert_match(/test\/unit\/synth\/resolver_test\.rb/, error.backtrace.first)
   end
 
   def test_nothing_the_user_wrote_is_changed
@@ -120,7 +206,7 @@ class SynthResolverTest < CoreHelpers::TestCase
     properties = { "First" => nested, "Second" => nil, "Third" => "x" }
     before = Marshal.load(Marshal.dump(properties))
     stack = build_stack do
-      resource("A", "AWS::SNS::Topic", properties)
+      resource("A", "AWS::SNS::Topic", properties: properties)
       resource("B", "AWS::SNS::Topic", "List" => [ 1, 2 ])
     end
 
@@ -128,8 +214,8 @@ class SynthResolverTest < CoreHelpers::TestCase
 
     assert_equal before, properties
     assert_equal [ 1, 2 ], stack.resources.last.properties["List"]
-    assert_not_same nested, template["Resources"]["A"]["Properties"]["First"]
-    assert_not_same stack.resources.first.properties, template["Resources"]["A"]["Properties"]
+    refute_same nested, template["Resources"]["A"]["Properties"]["First"]
+    refute_same stack.resources.first.properties, template["Resources"]["A"]["Properties"]
 
     nested.freeze
     properties.freeze
@@ -195,7 +281,7 @@ class SynthResolverTest < CoreHelpers::TestCase
   def test_anything_else_is_an_error_that_names_the_class
     stack = build_stack do
       parameter("N", type: "Number")
-      resource("A", "AWS::SNS::Topic", DisplayName: Object.new, "Owner" => stack, "Count" => 2r, "Stage" => parameters["N"])
+      resource("A", "AWS::SNS::Topic", DisplayName: Object.new, "Owner" => self, "Count" => 2r, "Stage" => parameters["N"])
     end
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
@@ -217,10 +303,10 @@ class SynthResolverTest < CoreHelpers::TestCase
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
 
-    assert_equal [ "Resources.A.Properties.List[1]", "Resources.A.Properties.Map.1", "Resources.A.Properties.Other" ], error.issues.map(&:path)
+    assert_equal [ "Resources.A.Properties.List[1]", "Resources.A.Properties.Map", "Resources.A.Properties.Other" ], error.issues.map(&:path)
     assert_match(/Resources\.A\.Properties\.List\[1\]: nil is not a value inside an array/, error.message)
-    assert_match(/Resources\.A\.Properties\.Map\.1: a Hash key must be a String or a Symbol, got 1/, error.message)
-    assert_match(/a Hash key must be a String or a Symbol, got #<RubyCdk::Cfn::Resource/, error.message)
+    assert_match(/Resources\.A\.Properties\.Map: a Hash key must be a String or a Symbol, got 1/, error.message)
+    assert_match(/a Hash key must be a String or a Symbol, got #<RubyCdk::Cfn::Resource App\/blog\/Topic>/, error.message)
   end
 
   def test_infinity_and_nan_are_not_values
@@ -237,7 +323,7 @@ class SynthResolverTest < CoreHelpers::TestCase
       @topic = resource("Topic", "AWS::SNS::Topic")
       resource("A", "AWS::SNS::Topic", DisplayName: Time.now, "Owner" => @topic)
       resource("B", "AWS::SQS::Queue", "Code" => ZippedAsset.new("abc", "abc.zip"), "Tags" => [ nil ])
-      resource("C", "AWS::SQS::Queue", "When" => proc {}, "Who" => Object.new)
+      resource("C", "AWS::SQS::Queue", "When" => proc { }, "Who" => Object.new)
     end
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
@@ -269,7 +355,7 @@ class SynthResolverTest < CoreHelpers::TestCase
     lazy = Lazy.new { :later }
 
     assert_equal "later", stack.resolve(lazy)
-    assert_equal nil, stack.resolve(nil)
+    assert_nil stack.resolve(nil)
     assert_equal({ "Ref" => "Topic" }, stack.resolve(Fn.ref("Topic")))
     assert_equal "ab", stack.resolve(Fn.join("", [ "a", "b" ]))
     assert_equal "abc", stack.resolve(Fn.join("", [ "a", Fn.join("", [ "b", "c" ]) ]))
@@ -290,12 +376,12 @@ class SynthResolverTest < CoreHelpers::TestCase
     assert_equal({ "Fn::Join" => [ "-", [ "a-b", { "Ref" => "Topic" }, "c-d" ] ] }, join.call([ "a", "b", Fn.ref(topic), "c", "d" ]))
     assert_equal({ "Fn::Join" => [ "-", [ { "Ref" => "Topic" }, { "Ref" => "Topic" } ] ] }, join.call([ Fn.ref(topic), Fn.ref(topic) ]))
     assert_equal "a:b", join.call([ Fn.join(":", [ "a", "b" ]) ])
-    assert_equal "ab-c", join.call([ Fn.join("-", [ "a", "b" ]), "c" ])
+    assert_equal "a-b-c", join.call([ Fn.join("-", [ "a", "b" ]), "c" ])
   end
 
   private
 
   def properties_of(**properties)
-    build_stack { resource("Thing", "AWS::SNS::Topic", properties) }.to_template.fetch("Resources").fetch("Thing").fetch("Properties")
+    build_stack { resource("Thing", "AWS::SNS::Topic", properties: properties) }.to_template.fetch("Resources").fetch("Thing").fetch("Properties")
   end
 end

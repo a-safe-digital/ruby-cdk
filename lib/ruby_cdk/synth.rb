@@ -11,11 +11,17 @@ module RubyCdk
   # Synthesis (architecture §5): prepare, resolve, normalize, validate,
   # serialize, write.
   #
-  # The pipeline knows the three middle phases only through what is registered
-  # here. A later component adds a normalizer or validators with
-  # register_normalizer and register_validator, and the pipeline does not
-  # change. A validator of this component is registered the same way, at the
-  # end of this file.
+  # The pipeline knows the normalizers, the validators and what the manifest
+  # says about other components only through what is registered here. A later
+  # component adds a normalizer or validators with register_normalizer and
+  # register_validator, and the pipeline does not change. The two validators of
+  # this component are registered the same way, at the end of this file.
+  #
+  #   Resolver     the resolve phase
+  #   Rules        V2 on logical IDs and V13 on the stack name
+  #   Serializer   the bytes, and the serialization contract
+  #   Manifest     what was written, as manifest.json says it
+  #   Writer       a file is written only when its bytes changed
   module Synth
     # What a normalizer and a validator receive.
     #
@@ -83,6 +89,11 @@ module RubyCdk
         manifest_facts.keys.freeze
       end
 
+      def unregister_manifest_fact(key)
+        manifest_facts.delete(key)
+        nil
+      end
+
       # provider answers call(stack, template) with what every stack's entry
       # writes under key: the hashes of its assets.
       def register_entry_fact(key, &provider)
@@ -95,10 +106,21 @@ module RubyCdk
         entry_facts[key]&.call(stack, template)
       end
 
+      def unregister_entry_fact(key)
+        entry_facts.delete(key)
+        nil
+      end
+
       # --- the phases
 
       # Every phase except write, for one stack. Never raises ValidationError:
       # result.issues says what is wrong.
+      #
+      #   prepare   the prepare hooks, children first, once per node
+      #   resolve   the live tree becomes a plain template; Lazy values run here
+      #   normalize the registered normalizers, in order
+      #   serialize the template is put in the order it is written in
+      #   validate  the registered validators, on exactly that template
       def run(stack)
         issues = []
         stack.prepare_tree                                        # prepare
@@ -109,10 +131,11 @@ module RubyCdk
             raise Error, "#{normalizer} returned a #{template.class}, and a normalizer returns the template as a Hash"
           end
         end
+        template = Serializer.ordered(template)                   # serialize, the template as it is written
         validators.each do |validator|                            # validate
           issues.concat(Array(validator.call(context(stack, template, issues))))
         end
-        Result.new(stack:, template:, bytes: Serializer.call(template), issues: issues.freeze)  # serialize
+        Result.new(stack:, template:, bytes: Serializer.render(template), issues: issues.freeze)  # serialize, the bytes
       end
 
       # Every phase except write, for one stack. Raises one ValidationError

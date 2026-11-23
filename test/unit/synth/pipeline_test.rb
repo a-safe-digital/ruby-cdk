@@ -79,7 +79,7 @@ class SynthPipelineTest < CoreHelpers::TestCase
     assert_equal "Normalized", JSON.parse(result.bytes)["Resources"]["A"]["Type"]
     assert_equal({ "AWSTemplateFormatVersion" => "2010-09-09", "Resources" => { "A" => { "Type" => "AWS::SNS::Topic", "Properties" => { "DisplayName" => "x" } } } },
       given.first)
-    assert_not_same given.first, result.template
+    refute_same given.first, result.template
   end
 
   def test_normalizers_run_in_the_order_they_were_registered_and_each_sees_what_the_one_before_answered
@@ -89,7 +89,7 @@ class SynthPipelineTest < CoreHelpers::TestCase
 
     result = Synth.run(stack)
 
-    assert_equal({ "AWSTemplateFormatVersion" => "2010-09-09", "Resources" => { "A" => { "Type" => "Step1:Step2:AWS::SNS::Topic" } } }, result.template)
+    assert_equal({ "AWSTemplateFormatVersion" => "2010-09-09", "Resources" => { "A" => { "Type" => "Step2:Step1:AWS::SNS::Topic" } } }, result.template)
     assert_equal [ "Step1", "Step2" ], @log
   end
 
@@ -192,16 +192,16 @@ class SynthPipelineTest < CoreHelpers::TestCase
     second = stack.to_template
 
     assert_equal first, second
-    assert_not_same first, second
+    refute_same first, second
     assert_equal [ "prepare", "normalize:n", "normalize:n" ], @log
     assert_equal [ "Early", "Prepared" ], stack.resources.map(&:logical_id)
   end
 
-  def test_a_stack_with_nothing_in_it_synthesizes_to_an_empty_template
+  def test_a_stack_with_nothing_in_it_synthesizes_to_a_template_with_only_its_format_version
     result = Synth.run(build_stack)
 
-    assert_equal({}, result.template)
-    assert_equal "{}\n", result.bytes
+    assert_equal({ "AWSTemplateFormatVersion" => "2010-09-09" }, result.template)
+    assert_equal "{\n  \"AWSTemplateFormatVersion\": \"2010-09-09\"\n}\n", result.bytes
   end
 
   def test_a_lazy_is_evaluated_once_across_two_syntheses
