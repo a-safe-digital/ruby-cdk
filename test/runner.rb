@@ -11,3 +11,6 @@ end
 require_relative "test_helper"
 
 Dir[File.join(__dir__, "unit", "**", "*_test.rb")].sort.each { |path| require path }
+
+# The component map is checked after the unit tests.
+Dir[File.join(__dir__, "architecture", "*_test.rb")].sort.each { |path| require path }
