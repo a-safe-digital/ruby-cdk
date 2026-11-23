@@ -1,0 +1,21 @@
+# Build output and local state
+/cdk.out/
+/coverage/
+/pkg/
+/.bundle/
+/vendor/
+sorbet/cache/
+*.gem
+
+# Editors and OS
+.DS_Store
+
+# ZCode workflow configuration: local
+/.zcode/
+
+# Local planning documents: never committed. They keep the numbered names below
+# (00-index, 01-audit ... 09-anything); committed docs such as docs/security.md
+# do not match this pattern.
+/docs/0[0-9]-*.md
+/docs/history/
+/docs/audits/

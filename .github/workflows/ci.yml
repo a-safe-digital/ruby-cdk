@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Every check is its own job, so they all run at once.
+jobs:
+  test:
+    name: Tests and coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - run: bundle exec rake test
+      - run: bundle exec rake coverage:check
+
+  style:
+    name: Style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - run: bundle exec rake rubocop
+
+  types:
+    name: Types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - run: bundle exec rake typecheck
+
+  purity:
+    name: Purity (no shell, no JavaScript toolchain)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - run: bundle exec rake purity
+
+  clean-install:
+    name: Clean install, no build tools
+    runs-on: ubuntu-latest
+    container:
+      image: ruby:4.0-slim
+    steps:
+      - uses: actions/checkout@v7
+      - run: gem build ruby-cdk.gemspec
+      - run: gem install ./ruby-cdk-*.gem --no-document
+      - run: ruby-cdk version
