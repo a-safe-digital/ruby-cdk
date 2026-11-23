@@ -96,6 +96,12 @@ module RubyCdk
       def hashes
         @zips.select(&:resolved?).map { |zip| zip.record.manifest_hash }.uniq
       end
+
+      # The records of the assets that were resolved, one per distinct key: what
+      # the deploy step uploads.
+      def records
+        @zips.select(&:resolved?).map(&:record).uniq(&:key)
+      end
     end
   end
 end

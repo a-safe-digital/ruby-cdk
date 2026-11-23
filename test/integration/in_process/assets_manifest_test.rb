@@ -27,7 +27,7 @@ class AssetsManifestTest < Minitest::Test
     files = File.join(@dir, "lambda")
     FileUtils.mkdir_p(files)
     File.write(File.join(files, "index.rb"), "puts 1\n")
-    hash = RubyCdk::Assets::Hasher.hash(files)
+    hash = RubyCdk::Assets::Hasher.asset_hash(files)
 
     app = RubyCdk::App.new(env: TARGET, out_dir: File.join(@dir, "out")) do |app|
       RubyCdk::Stack.new(app, "Web") do

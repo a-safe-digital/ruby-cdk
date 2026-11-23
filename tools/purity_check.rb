@@ -51,8 +51,9 @@ module Tools
               violations << "#{path}:#{node.location.start_line}: `#{node.name}` starts a process or a pipe"
             end
           when Prism::StringNode, Prism::SymbolNode
+            # A literal can be binary, as a gzip magic number: it names nothing in words.
             word = node.unescaped.to_s
-            if !node_words_allowed && NODE_WORDS.include?(word.downcase)
+            if word.valid_encoding? && !node_words_allowed && NODE_WORDS.include?(word.downcase)
               violations << "#{path}:#{node.location.start_line}: names the JavaScript toolchain: #{word.inspect}"
             end
           end
