@@ -85,4 +85,36 @@ class LazyTest < Minitest::Test
     assert_raises(RuntimeError) { lazy.resolve(nil) }
     assert_equal "now", lazy.resolve(nil)
   end
+
+  def test_a_chain_that_is_cyclic_or_too_deep_raises_its_own_error
+    too_deep = RubyCdk::Lazy.new { "bottom" }
+    (RubyCdk::Lazy::MAX_DEPTH + 1).times do
+      next_link = too_deep
+      too_deep = RubyCdk::Lazy.new { next_link }
+    end
+    cyclic = nil
+    cyclic = RubyCdk::Lazy.new { cyclic }
+
+    assert_raises(RubyCdk::Lazy::ChainError) { too_deep.resolve(nil) }
+    assert_raises(RubyCdk::Lazy::ChainError) { cyclic.resolve(nil) }
+    assert_operator RubyCdk::Lazy::ChainError, :<, RubyCdk::Error
+  end
+
+  def test_another_error_from_the_block_is_not_a_chain_error
+    lazy = RubyCdk::Lazy.new { raise RubyCdk::UsageError, "no such directory" }
+
+    error = assert_raises(RubyCdk::UsageError) { lazy.resolve(nil) }
+
+    assert_equal "no such directory", error.message
+    refute_kind_of RubyCdk::Lazy::ChainError, error
+    refute_predicate lazy, :resolved?
+  end
+
+  def test_resolved_says_whether_the_block_has_run
+    lazy = RubyCdk::Lazy.new { "x" }
+
+    refute_predicate lazy, :resolved?
+    lazy.resolve(nil)
+    assert_predicate lazy, :resolved?
+  end
 end

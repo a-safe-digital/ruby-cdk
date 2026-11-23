@@ -146,6 +146,61 @@ class CoreAppTest < CoreHelpers::TestCase
     assert_raises(RubyCdk::UsageError) { RubyCdk::App.current }
   end
 
+  # --- where synthesis writes
+
+  def test_the_app_file_s_out_dir_wins_then_the_command_s_then_the_default
+    explicit = write_app_file("RubyCdk::App.new(out_dir: 'from-the-app')\n", name: "explicit.rb")
+    silent = write_app_file("RubyCdk::App.new\n", name: "silent.rb")
+
+    assert_equal "from-the-app", RubyCdk::App.build!(app_file: explicit, out_dir: "from-the-command").out_dir
+    assert_equal "from-the-app", RubyCdk::App.build!(app_file: explicit).out_dir
+    assert_equal "from-the-command", RubyCdk::App.build!(app_file: silent, out_dir: "from-the-command").out_dir
+    assert_equal "cdk.out", RubyCdk::App.build!(app_file: silent).out_dir
+    assert_equal "cdk.out", RubyCdk::App::DEFAULT_OUT_DIR
+  end
+
+  def test_an_app_created_outside_any_command_writes_under_the_default_directory
+    assert_equal "cdk.out", RubyCdk::App.new.out_dir
+    assert_equal "cdk.out", RubyCdk::App.new(out_dir: nil).out_dir
+    assert_equal "mine", RubyCdk::App.new(out_dir: "mine").out_dir
+  end
+
+  def test_the_directory_of_one_build_never_reaches_the_next
+    silent = write_app_file("RubyCdk::App.new\n")
+
+    RubyCdk::App.build!(app_file: silent, out_dir: "first-command")
+
+    assert_nil RubyCdk::App.out_dir_of_command
+    assert_equal "cdk.out", RubyCdk::App.build!(app_file: silent).out_dir
+    assert_equal "cdk.out", RubyCdk::App.new.out_dir
+  end
+
+  def test_an_app_file_that_raises_leaves_no_directory_behind
+    broken = write_app_file("RubyCdk::App.new(out_dir: 'half-way')\nraise \"the user's mistake\"\n", name: "broken.rb")
+
+    assert_raises(RuntimeError) { RubyCdk::App.build!(app_file: broken, out_dir: "from-the-command") }
+    assert_nil RubyCdk::App.out_dir_of_command
+    assert_equal "cdk.out", RubyCdk::App.new.out_dir
+  end
+
+  def test_the_command_s_directory_is_not_a_writer_anyone_else_can_use
+    refute RubyCdk::App.respond_to?(:out_dir_of_command=)
+    refute RubyCdk::App.respond_to?(:out_dir=)
+  end
+
+  def test_build_and_new_refuse_a_directory_that_is_not_a_path
+    silent = write_app_file("RubyCdk::App.new\n")
+
+    error = assert_raises(RubyCdk::UsageError) { RubyCdk::App.build!(app_file: silent, out_dir: "") }
+
+    assert_equal 'App.build!: out_dir must be the path of a directory or nil, got ""', error.message
+    assert_nil RubyCdk::App.out_dir_of_command
+
+    error = assert_raises(RubyCdk::UsageError) { RubyCdk::App.new(out_dir: "") }
+
+    assert_equal 'App.new: out_dir must be the path of a directory or nil, got ""', error.message
+  end
+
   private
 
   def write_app_file(source, name: "app.rb")

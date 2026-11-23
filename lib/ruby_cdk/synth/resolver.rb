@@ -83,7 +83,12 @@ module RubyCdk
 
       def parameter_body(parameter)
         body = { "Type" => parameter.type }
-        at("Default") { body["Default"] = value(parameter.default) } unless parameter.default.nil?
+        unless parameter.default.nil?
+          at("Default") do
+            resolved = value(parameter.default)
+            body["Default"] = resolved unless resolved.equal?(OMIT)
+          end
+        end
         body["Description"] = parameter.description if parameter.description
         at("AllowedValues") { body["AllowedValues"] = value(parameter.allowed_values) } if parameter.allowed_values
         body["NoEcho"] = true if parameter.no_echo

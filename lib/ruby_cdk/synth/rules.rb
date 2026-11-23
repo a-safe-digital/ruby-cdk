@@ -74,8 +74,9 @@ module RubyCdk
 
           [
             Issue.new(
-              rule: RULE, path: name,
-              message: "is not a valid stack name: it must start with a letter, go on with letters, digits and hyphens, and be at most #{Stack::MAX_NAME_LENGTH} characters long",
+              rule: RULE, path: "Stack",
+              message: "the stack name #{name.inspect} is not valid: it must start with a letter, go on with letters, digits and hyphens, " \
+                "and be at most #{Stack::MAX_NAME_LENGTH} characters long",
               hint: "a stack's name is the prefix of App.new(stack_name_prefix:) followed by its id"
             )
           ]

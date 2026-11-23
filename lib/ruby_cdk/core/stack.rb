@@ -120,7 +120,8 @@ module RubyCdk
       digest = Digest::SHA256.hexdigest("#{env.account}:#{env.region}:#{stack_name}:#{suffix}")[0, UNIQUE_NAME_HASH_LENGTH]
       name = [ stack_name, suffix&.to_s ].compact.map { |part| name_word(part) }.reject(&:empty?).join("-")
       name = "#{name.empty? ? "" : "#{name}-"}#{digest}"
-      name = name[-max_length, max_length] if name.length > max_length
+      # Shortened from the left: its last max_length characters.
+      name = name[name.length - max_length, max_length] || name if name.length > max_length
       name.delete_prefix("-")
     end
 

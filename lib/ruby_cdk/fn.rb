@@ -43,7 +43,7 @@ module RubyCdk
     # An empty list is an error, as it is in the CDK.
     def join(separator, *parts)
       list = parts.flatten(1)
-      raise UsageError, "Fn.join requires at least one value to be provided" if list.empty?
+      Kernel.raise UsageError, "Fn.join requires at least one value to be provided" if list.empty?
 
       { "Fn::Join" => [ separator, list ] }
     end
@@ -56,9 +56,10 @@ module RubyCdk
     # Fn.select is then the only way to take an element out of it.
     def split(separator, string, assumed_length = nil)
       if string.is_a?(String)
-        raise UsageError, "Fn.split takes a String separator, got #{separator.inspect}" unless separator.is_a?(String)
+        Kernel.raise UsageError, "Fn.split takes a String separator, got #{separator.inspect}" unless separator.is_a?(String)
 
         return [ "" ] if string.empty?
+        return string.chars if separator.empty?
         return string.split(/#{Regexp.escape(separator)}/, -1)
       end
 
@@ -66,7 +67,7 @@ module RubyCdk
       return intrinsic if assumed_length.nil?
 
       unless assumed_length.is_a?(Integer) && assumed_length >= 0
-        raise UsageError, "Fn.split: assumed_length must be an Integer of at least 0, got #{assumed_length.inspect}"
+        Kernel.raise UsageError, "Fn.split: assumed_length must be an Integer of at least 0, got #{assumed_length.inspect}"
       end
 
       Array.new(assumed_length) { |index| select(index, intrinsic) }
@@ -80,11 +81,14 @@ module RubyCdk
 
     # The element at index of a list that is entirely known at once. Otherwise
     # an Fn::Select. The index is written as given: the CDK writes a number.
+    #
+    # Known at once is the CDK's rule: nothing anywhere in the list is deferred,
+    # neither a Lazy nor an intrinsic. A plain Hash or Array in it is fine.
     def select(index, list)
       unless list.is_a?(Array) || list.is_a?(Hash)
-        raise UsageError, "Fn.select takes an Array or a function that returns a list, got #{list.inspect}"
+        Kernel.raise UsageError, "Fn.select takes an Array or a function that returns a list, got #{list.inspect}"
       end
-      if index.is_a?(Integer) && list.is_a?(Array) && list.none? { |item| item.is_a?(Lazy) }
+      if index.is_a?(Integer) && list.is_a?(Array) && list.none? { |item| deferred?(item) }
         return list[index]
       end
 
@@ -157,7 +161,7 @@ module RubyCdk
       return target.name if target.is_a?(Symbol)
       return target.logical_id.to_s if target.respond_to?(:logical_id)
 
-      raise UsageError, "#{caller} takes a resource, a parameter or a logical ID, got #{target.inspect}"
+      Kernel.raise UsageError, "#{caller} takes a resource, a parameter or a logical ID, got #{target.inspect}"
     end
 
     def condition_name(condition, caller)
@@ -165,14 +169,14 @@ module RubyCdk
       return condition.name if condition.is_a?(Symbol)
       return condition.name.to_s if condition.respond_to?(:name)
 
-      raise UsageError, "#{caller} takes a condition the stack declared, or its name, got #{condition.inspect}"
+      Kernel.raise UsageError, "#{caller} takes a condition the stack declared, or its name, got #{condition.inspect}"
     end
 
     def name_of(key, caller)
       return key if key.is_a?(String)
       return key.name if key.is_a?(Symbol)
 
-      raise UsageError, "The keys of #{caller} must be Strings or Symbols, got #{key.inspect}"
+      Kernel.raise UsageError, "The keys of #{caller} must be Strings or Symbols, got #{key.inspect}"
     end
 
     def nested_join?(value, delimiter)
@@ -186,10 +190,34 @@ module RubyCdk
       value.is_a?(String) || value.is_a?(Integer) || value.is_a?(Float)
     end
 
-    # A literal the way a join writes it: the way JavaScript prints a number.
-    def literal(value)
-      value.is_a?(Float) && value == value.to_i ? value.to_i.to_s : value.to_s
+    # What stands for a value CloudFormation computes: a Lazy, or an intrinsic,
+    # anywhere inside.
+    def deferred?(value)
+      case value
+      when Lazy
+        true
+      when Hash
+        intrinsic?(value) || value.values.any? { |item| deferred?(item) }
+      when Array
+        value.any? { |item| deferred?(item) }
+      else
+        false
+      end
     end
-    private_class_method :logical_id_of, :condition_name, :name_of, :nested_join?, :concatable?, :literal
+
+    # A Hash with one key, "Ref" or a name that starts with "Fn::": the CDK's isIntrinsic.
+    def intrinsic?(value)
+      return false unless value.is_a?(Hash) && value.size == 1
+
+      key = value.keys.first
+      key == "Ref" || (key.is_a?(String) && key.start_with?("Fn::"))
+    end
+
+    # A literal the way a join writes it: the way JavaScript prints a number,
+    # so 1.0 is written "1".
+    def literal(value)
+      value.is_a?(Float) && value.to_i.to_f == value ? value.to_i.to_s : value.to_s
+    end
+    private_class_method :logical_id_of, :condition_name, :name_of, :nested_join?, :concatable?, :deferred?, :intrinsic?, :literal
   end
 end

@@ -14,7 +14,11 @@ module RubyCdk
     # opts are the properties, or properties: holds them under their exact
     # CloudFormation names; the two cannot be combined.
     def resource(id, type, properties: nil, depends_on: [], condition: nil, deletion_policy: nil, update_replace_policy: nil, metadata: {}, **opts)
-      Cfn::Resource.new(self, id, type:, properties:, depends_on:, condition:, deletion_policy:, update_replace_policy:, metadata:, **opts)
+      if properties && !opts.empty?
+        raise UsageError, "resource #{id.inspect} in #{path}: #{Cfn::Resource::BOTH_PROPERTIES}"
+      end
+
+      Cfn::Resource.new(self, id, type:, properties: properties || opts, depends_on:, condition:, deletion_policy:, update_replace_policy:, metadata:)
     end
   end
 
@@ -24,6 +28,8 @@ module RubyCdk
     # Its logical ID is its id when it sits directly in a Stack, and the ids of
     # the constructs around it joined in front of its own otherwise.
     class Resource < Construct
+      BOTH_PROPERTIES = "properties: cannot be combined with other keywords. Pass every property as a keyword, or all of them inside properties: { ... }"
+
       attr_reader :type, :logical_id, :properties, :depends_on, :condition, :deletion_policy, :update_replace_policy, :metadata
 
       # depends_on: resources, parameters or logical IDs that this resource is
@@ -66,9 +72,7 @@ module RubyCdk
       end
 
       def properties_hash(properties, opts, where)
-        if properties && !opts.empty?
-          raise UsageError, "#{where}: properties: cannot be combined with other keywords. Pass every property as a keyword, or all of them inside properties: { ... }"
-        end
+        raise UsageError, "#{where}: #{BOTH_PROPERTIES}" if properties && !opts.empty?
         unless properties.nil? || properties.is_a?(Hash)
           raise UsageError, "#{where}: properties: takes a Hash, got #{properties.inspect}"
         end

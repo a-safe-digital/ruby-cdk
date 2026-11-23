@@ -95,13 +95,14 @@ class SynthRulesTest < CoreHelpers::TestCase
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
 
     assert_equal [ "V13" ], error.issues.map(&:rule)
-    assert_equal "1blog", error.issues.first.path
-    assert_equal "V13 1blog: is not a valid stack name: it must start with a letter, go on with letters, digits and hyphens, and be at most 128 characters long",
-      error.message
+    assert_equal "Stack", error.issues.first.path
+    assert_equal "V13 Stack: the stack name \"1blog\" is not valid: it must start with a letter, go on with letters, digits and hyphens, " \
+      "and be at most 128 characters long", error.message
+    assert_equal "a stack's name is the prefix of App.new(stack_name_prefix:) followed by its id", error.issues.first.hint
   end
 
   def test_every_rule_of_the_stack_name
-    [ "1blog", "my_blog", "-blog", "blog-", "a" * 129 ].each do |name|
+    [ "1blog", "my_blog", "-blog", "a" * 129 ].each do |name|
       stack = build_stack(name)
 
       error = assert_raises(RubyCdk::ValidationError, name) { stack.to_template }
@@ -109,26 +110,26 @@ class SynthRulesTest < CoreHelpers::TestCase
       assert_equal "V13", error.issues.first.rule, name
     end
 
-    %w[ blog my-blog-stack B2B a ].each do |name|
+    %w[ blog my-blog-stack B2B a blog- ].each do |name|
       assert_equal name, build_stack(name).stack_name
       assert_kind_of Hash, build_stack(name).to_template
     end
-    assert_empty build_stack("a" * 128).to_template
+    refute build_stack("a" * 128).to_template.key?("Resources")
   end
 
   def test_v13_fails_only_while_the_rule_is_registered
     stack = build_stack("1blog")
     without_rule(RubyCdk::Synth::Rules::StackName)
 
-    assert_empty stack.to_template
+    refute stack.to_template.key?("Resources")
   end
 
-  def test_a_prefix_that_breaks_the_name_is_reported_too
+  def test_a_prefix_that_breaks_the_name_is_reported_with_the_whole_name
     stack = build_stack("blog", app_options: { stack_name_prefix: "9acme-" })
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
 
-    assert_equal "9acme-blog", error.issues.first.path
+    assert_match(/the stack name "9acme-blog" is not valid/, error.message)
   end
 
   private

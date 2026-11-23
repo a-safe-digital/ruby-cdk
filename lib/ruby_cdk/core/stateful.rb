@@ -95,7 +95,7 @@ module RubyCdk
       def validate_default!(value)
         choice = DEFAULTS.find { |candidate| candidate.to_s == value.to_s }
         unless choice
-          raise UsageError, "stateful_default: #{value.inspect} is not one of #{DEFAULTS.map(&:inspect).join(", ")}"
+          Kernel.raise UsageError, "stateful_default: #{value.inspect} is not one of #{DEFAULTS.map(&:inspect).join(", ")}"
         end
 
         choice
@@ -115,8 +115,11 @@ module RubyCdk
 
       # :retained or :snapshot for a stateful type, nil for any other.
       def stateful_kind(type)
-        return :retained if RETAINED_TYPES.include?(type)
-        return :snapshot if SNAPSHOT_TYPES.include?(type)
+        if RETAINED_TYPES.include?(type)
+          :retained
+        elsif SNAPSHOT_TYPES.include?(type)
+          :snapshot
+        end
       end
 
       def policy(value, names, keyword, where)
@@ -126,7 +129,7 @@ module RubyCdk
         unless canonical
           allowed = names.values.join(", ")
           prefix = where ? "#{where}: " : ""
-          raise UsageError, "#{prefix}#{keyword}: #{value.inspect} is not one of #{allowed}"
+          Kernel.raise UsageError, "#{prefix}#{keyword}: #{value.inspect} is not one of #{allowed}"
         end
 
         canonical
