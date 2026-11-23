@@ -96,7 +96,7 @@ class DeployStackStatesTest < Minitest::Test
 
   def test_a_failed_creation_whose_deletion_does_not_finish_is_left_alone
     client.stack("blog", status: "ROLLBACK_COMPLETE", id: STACK_ID)
-    client.on(:delete_stack, ->(_call) {})
+    client.on(:delete_stack, ->(_call) { })
     client.on(:stack_state, :rollback_complete, :busy, :rollback_failed)
 
     error = assert_raises(D::StackNeedsRepair) { deploy(client, options: unattended) }
