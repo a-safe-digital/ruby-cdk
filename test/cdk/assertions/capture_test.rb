@@ -16,6 +16,8 @@
 #     text of a message names one it is changed: objectLike is object_like,
 #     arrayWith is array_with.
 #   - jest's expect(fn).toThrow(pattern) is assert_thrown, defined below.
+#
+# Parity: 12 cases in the origin; 12 ported; 0 not ported.
 
 require "test_helper"
 require "ruby_cdk/test"

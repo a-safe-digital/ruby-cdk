@@ -41,6 +41,8 @@
 #     arrayWith is array_with.
 #   - jest's expect(fn).toThrow(pattern) is assert_thrown, expect(fn).not.toThrow()
 #     is the call on its own, and the file's own expectToThrow is kept as it is.
+#
+# Parity: 85 cases in the origin; 82 ported; 3 not ported.
 
 require "test_helper"
 require "ruby_cdk/test"

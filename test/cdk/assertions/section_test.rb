@@ -16,6 +16,8 @@
 #     SectionMatch, so the `as MatchSuccess` castings of the original are gone.
 #   - jest's expect(x).toEqual(y) is assert_equal y, x, and expect(x).not.toEqual(y)
 #     is refute_equal y, x.
+#
+# Parity: 2 cases in the origin; 2 ported; 0 not ported.
 
 require "test_helper"
 require "ruby_cdk/test"

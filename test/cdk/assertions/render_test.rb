@@ -19,6 +19,8 @@
 #     name one: arrayWith is array_with.
 #   - JSON.stringify of the target of the "Encodedjson matcher" case is the same
 #     JSON string written by hand.
+#
+# Parity: 11 cases in the origin; 11 ported; 0 not ported.
 
 require "test_helper"
 require "ruby_cdk/test"
