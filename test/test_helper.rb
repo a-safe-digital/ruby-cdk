@@ -18,7 +18,7 @@ SimpleCov.start do
   minimum_coverage line: Tools::COVERAGE_LINE_FLOOR if FULL_SUITE
 end
 
-$LOAD_PATH.unshift(File.expand_path("..", __dir__))
+$LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 
 require "minitest/autorun"
 require "ruby_cdk"
