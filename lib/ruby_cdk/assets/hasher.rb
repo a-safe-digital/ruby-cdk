@@ -72,7 +72,10 @@ module RubyCdk
         # The manifest hash of the directory. The same files in another
         # directory, created in another order or with other timestamps, give
         # the same hash.
-        def hash(source_path, exclude: [])
+        #
+        # Not named hash: that is Object#hash on the class itself, which has to
+        # answer an Integer for the class to be a Hash key or to sit in a Set.
+        def asset_hash(source_path, exclude: [])
           manifest_hash(manifest(source_path, exclude: exclude))
         end
 

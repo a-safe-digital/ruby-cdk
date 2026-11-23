@@ -40,7 +40,7 @@ class AssetsBuilderTest < Minitest::Test
 
   def test_hash_key_bucket_and_location
     asset = stack.asset.zip(directory("lambda", "index.rb" => "puts 1\n"))
-    hash = RubyCdk::Assets::Hasher.hash(asset.source_path)
+    hash = RubyCdk::Assets::Hasher.asset_hash(asset.source_path)
 
     assert_equal hash, asset.asset_hash.resolve(stack)
     assert_equal "#{hash}.zip", asset.key.resolve(stack)
@@ -104,6 +104,25 @@ class AssetsBuilderTest < Minitest::Test
 
   def test_the_bucket_name
     assert_equal BUCKET, RubyCdk::Assets.bucket_name("111122223333", "eu-central-1")
+  end
+
+  def test_nothing_here_is_kept_from_being_a_hash_key
+    asset = stack.asset.zip(directory("lambda", "index.rb" => "puts 1\n"))
+
+    assert_kind_of Integer, RubyCdk::Assets::Hasher.hash
+    assert_kind_of Integer, asset.hash
+  end
+
+  def test_the_records_are_what_the_deploy_step_uploads
+    source = directory("lambda", "index.rb" => "puts 1\n")
+    stack.asset.zip(source).key.resolve(stack)
+    stack.asset.zip(source).key.resolve(stack)
+    declared_only = stack.asset.zip(directory("later", "index.rb" => "puts 2\n"))
+
+    records = stack.asset.records
+
+    assert_equal [ "#{RubyCdk::Assets::Hasher.asset_hash(source)}.zip" ], records.map(&:key), "one record per distinct asset that was resolved"
+    refute declared_only.resolved?, "an asset nobody resolved was read for the deploy"
   end
 
   private

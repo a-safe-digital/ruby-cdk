@@ -35,7 +35,7 @@ class AssetsRecordTest < Minitest::Test
 
     assert_equal File.expand_path(@dir), record.source_path
     assert_equal %w[app.rb lib/deep.rb], record.manifest.map(&:path)
-    assert_equal RubyCdk::Assets::Hasher.hash(@dir), record.manifest_hash
+    assert_equal RubyCdk::Assets::Hasher.asset_hash(@dir), record.manifest_hash
     assert_match(/\A[0-9a-f]{64}\z/, record.manifest_hash)
   end
 
