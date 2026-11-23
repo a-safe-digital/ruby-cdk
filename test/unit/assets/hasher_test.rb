@@ -75,7 +75,7 @@ class AssetsHasherTest < Minitest::Test
       with_directory do |second|
         File.write(File.join(second, "empty"), "")
 
-        assert_equal hasher.hash(first), hasher.hash(second)
+        assert_equal hasher.asset_hash(first), hasher.asset_hash(second)
       end
     end
   end
@@ -86,7 +86,7 @@ class AssetsHasherTest < Minitest::Test
       with_directory do |outdir|
         copy_tree(srcdir, outdir)
 
-        assert_equal hasher.hash(srcdir), hasher.hash(outdir)
+        assert_equal hasher.asset_hash(srcdir), hasher.asset_hash(outdir)
       end
     end
   end
@@ -94,12 +94,12 @@ class AssetsHasherTest < Minitest::Test
   def test_ignores_requested_files
     with_directory do |srcdir|
       write_tree(srcdir, TREE)
-      hash_src = hasher.hash(srcdir, exclude: [ "*.ignoreme" ])
+      hash_src = hasher.asset_hash(srcdir, exclude: [ "*.ignoreme" ])
       with_directory do |outdir|
         copy_tree(srcdir, outdir)
         File.write(File.join(outdir, "#{hash_src}.ignoreme"), "Ignore me!")
 
-        assert_equal hash_src, hasher.hash(outdir, exclude: [ "*.ignoreme" ])
+        assert_equal hash_src, hasher.asset_hash(outdir, exclude: [ "*.ignoreme" ])
       end
     end
   end
@@ -113,7 +113,7 @@ class AssetsHasherTest < Minitest::Test
         # be careful not to break a symlink
         File.rename(File.join(cpydir, "normal-dir", "file-in-subdir.txt"), File.join(cpydir, "move-me.txt"))
 
-        refute_equal hasher.hash(srcdir), hasher.hash(cpydir)
+        refute_equal hasher.asset_hash(srcdir), hasher.asset_hash(cpydir)
       end
     end
   end
@@ -141,9 +141,9 @@ class AssetsHasherTest < Minitest::Test
       write_tree(dir, FIXTURE)
       File.chmod(0o755, File.join(dir, "bin/run"))
 
-      assert_equal FIXTURE_HASH, hasher.hash(dir)
+      assert_equal FIXTURE_HASH, hasher.asset_hash(dir)
       assert_equal FIXTURE_TEXT, hasher.canonical(hasher.manifest(dir))
-      assert_equal Digest::SHA256.hexdigest(FIXTURE_TEXT), hasher.hash(dir)
+      assert_equal Digest::SHA256.hexdigest(FIXTURE_TEXT), hasher.asset_hash(dir)
     end
   end
 
@@ -156,7 +156,7 @@ class AssetsHasherTest < Minitest::Test
         File.symlink(dir, source_path)
 
         # Should be the same asset hash as in the previous test
-        assert_equal FIXTURE_HASH, hasher.hash(source_path)
+        assert_equal FIXTURE_HASH, hasher.asset_hash(source_path)
       end
     end
   end
@@ -204,11 +204,11 @@ class AssetsHasherTest < Minitest::Test
     with_directory do |dir|
       write_tree(dir, FIXTURE)
 
-      hash = hasher.hash(dir)
+      hash = hasher.asset_hash(dir)
 
       assert_match(/\A[0-9a-f]{64}\z/, hash)
       assert_equal Digest::SHA256.hexdigest(hasher.canonical(hasher.manifest(dir))), hash
-      assert_equal hasher.manifest_hash(hasher.manifest(dir)), hasher.hash(dir)
+      assert_equal hasher.manifest_hash(hasher.manifest(dir)), hasher.asset_hash(dir)
     end
   end
 
@@ -216,21 +216,21 @@ class AssetsHasherTest < Minitest::Test
     with_directory do |dir|
       assert_equal [], hasher.manifest(dir)
       assert_equal "", hasher.canonical([])
-      assert_equal "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", hasher.hash(dir)
+      assert_equal "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", hasher.asset_hash(dir)
     end
   end
 
   def test_the_hash_ignores_modification_times
     with_directory do |dir|
       write_tree(dir, FIXTURE)
-      before = hasher.hash(dir)
+      before = hasher.asset_hash(dir)
 
       files = FIXTURE.keys.map { |path| File.join(dir, path) }
       files.each_with_index { |file, index| File.utime(Time.at(1_000_000_000 + (index * 86_400)), Time.at(2_000_000_000), file) }
-      assert_equal before, hasher.hash(dir)
+      assert_equal before, hasher.asset_hash(dir)
 
       files.each_with_index { |file, index| File.utime(Time.at(946_684_800 - (index * 3_600)), Time.at(946_684_800), file) }
-      assert_equal before, hasher.hash(dir)
+      assert_equal before, hasher.asset_hash(dir)
     end
   end
 
@@ -240,7 +240,7 @@ class AssetsHasherTest < Minitest::Test
       with_directory do |second|
         write_tree(second, FIXTURE.merge("lib/deep/other.txt" => "other").reverse_each.to_h)
 
-        assert_equal hasher.hash(first), hasher.hash(second)
+        assert_equal hasher.asset_hash(first), hasher.asset_hash(second)
       end
     end
   end
@@ -262,7 +262,7 @@ class AssetsHasherTest < Minitest::Test
           entry = hasher.manifest(dir).first
 
           assert_equal mode, entry.mode, format("chmod %04o", permission)
-          hashes[mode] << hasher.hash(dir)
+          hashes[mode] << hasher.asset_hash(dir)
         end
       end
     end
@@ -283,7 +283,7 @@ class AssetsHasherTest < Minitest::Test
             File.chmod(0o700, File.join(strict, "bin/run"))
 
             assert_operator File.stat(File.join(strict, "app.rb")).mode & 0o777, :<, File.stat(File.join(loose, "app.rb")).mode & 0o777
-            assert_equal hasher.hash(loose), hasher.hash(strict)
+            assert_equal hasher.asset_hash(loose), hasher.asset_hash(strict)
           end
         end
       end
@@ -293,11 +293,11 @@ class AssetsHasherTest < Minitest::Test
   def test_changing_one_byte_changes_the_hash
     with_directory do |dir|
       write_tree(dir, FIXTURE)
-      before = hasher.hash(dir)
+      before = hasher.asset_hash(dir)
 
       File.write(File.join(dir, "app.rb"), File.binread(File.join(dir, "app.rb")) + ".")
 
-      refute_equal before, hasher.hash(dir)
+      refute_equal before, hasher.asset_hash(dir)
     end
   end
 
@@ -307,7 +307,7 @@ class AssetsHasherTest < Minitest::Test
       with_directory do |crlf|
         write_tree(crlf, { "message.txt" => "hello word\r\nthis a new line!\r\n" })
 
-        refute_equal hasher.hash(lf), hasher.hash(crlf)
+        refute_equal hasher.asset_hash(lf), hasher.asset_hash(crlf)
       end
     end
   end
@@ -315,12 +315,12 @@ class AssetsHasherTest < Minitest::Test
   def test_the_same_files_moved_to_another_directory_keep_the_hash
     with_directory do |here|
       write_tree(here, FIXTURE)
-      before = hasher.hash(here)
+      before = hasher.asset_hash(here)
       with_directory do |there|
         FIXTURE.keys.map { |path| path.split("/").first }.uniq.each { |entry| FileUtils.mv(File.join(here, entry), File.join(there, entry)) }
 
         assert_equal [], Dir.children(here)
-        assert_equal before, hasher.hash(there)
+        assert_equal before, hasher.asset_hash(there)
       end
     end
   end
@@ -335,7 +335,7 @@ class AssetsHasherTest < Minitest::Test
       error = assert_raises(RubyCdk::Assets::SymlinkError) { hasher.manifest(dir) }
 
       assert_match(/link\.txt/, error.message)
-      assert_raises(RubyCdk::Assets::SymlinkError) { hasher.hash(dir) }
+      assert_raises(RubyCdk::Assets::SymlinkError) { hasher.asset_hash(dir) }
     end
   end
 
@@ -378,7 +378,7 @@ class AssetsHasherTest < Minitest::Test
       File.chmod(0o755, File.join(dir, "bin/run"))
       File.symlink("/nonexistent/path/to/nowhere", File.join(dir, "skip-me"))
 
-      assert_equal FIXTURE_HASH, hasher.hash(dir, exclude: [ "skip-me" ])
+      assert_equal FIXTURE_HASH, hasher.asset_hash(dir, exclude: [ "skip-me" ])
     end
   end
 
