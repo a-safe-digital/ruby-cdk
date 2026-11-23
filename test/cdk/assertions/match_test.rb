@@ -19,6 +19,8 @@
 #     T::UNDEFINED. nil is its null. The two behave differently in the engine.
 #   - jest's expect(fn).toThrow(pattern) is assert_thrown, defined below.
 #   - The file's own expectPass and expectFailure are kept as they are.
+#
+# Parity: 35 cases in the origin; 35 ported; 0 not ported.
 
 require "test_helper"
 require "ruby_cdk/test"
