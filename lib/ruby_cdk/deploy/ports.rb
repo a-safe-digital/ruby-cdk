@@ -8,6 +8,7 @@ module RubyCdk
     StackResource = Struct.new(:logical_id, :status, :physical_id, keyword_init: true)
     Identity = Struct.new(:account, :region, :arn, keyword_init: true)
     StackInfo = Struct.new(:name, :id, :status, :outputs, :termination_protection, keyword_init: true)
+    ListedStack = Struct.new(:name, :id, :status, keyword_init: true)
 
     # What stack_state answers.
     #
@@ -19,18 +20,62 @@ module RubyCdk
     #   :busy              an operation is running: refuse
     STACK_STATES = %i[absent review stable rollback_complete rollback_failed busy].freeze
 
+    # The state each CloudFormation stack status is in. This is the promise of
+    # stack_state, so the table sits with the port: the adapter that answers
+    # stack_state and the engine that acts on the answer read the same one.
+    # The grouping is the CDK's (stack-status.ts in its CLI).
+    module StackStatus
+      IN_PROGRESS = "_IN_PROGRESS"
+      REVIEW = "REVIEW_IN_PROGRESS"
+      DELETED = "DELETE_COMPLETE"
+
+      STATE = {
+        DELETED => :absent,
+        REVIEW => :review,
+        "CREATE_COMPLETE" => :stable,
+        "UPDATE_COMPLETE" => :stable,
+        "UPDATE_ROLLBACK_COMPLETE" => :stable,
+        "IMPORT_COMPLETE" => :stable,
+        "IMPORT_ROLLBACK_COMPLETE" => :stable,
+        # The CDK's isCreationFailure: only a delete is possible, then a new creation.
+        "ROLLBACK_COMPLETE" => :rollback_complete,
+        "ROLLBACK_FAILED" => :rollback_complete,
+        # A rollback is waiting to be continued.
+        "UPDATE_ROLLBACK_FAILED" => :rollback_failed,
+        "CREATE_FAILED" => :rollback_failed,
+        "UPDATE_FAILED" => :rollback_failed,
+        "DELETE_FAILED" => :rollback_failed
+      }.freeze
+
+      # The state of a stack status, or nil for a status this tool does not know.
+      # nil is a stack that does not exist. REVIEW_IN_PROGRESS is looked up
+      # before the rule for in-progress statuses, because it ends the same way.
+      def self.state(status)
+        return :absent if status.nil?
+        return nil unless status.is_a?(String)
+
+        STATE.fetch(status) { status.end_with?(IN_PROGRESS) ? :busy : nil }
+      end
+    end
+
     # How the engine talks to a person, or to --json and --quiet.
     module Output
       def target(account:, region:, profile:)
         Kernel.raise NotImplementedError
       end
 
-      def changes(list)
+      # capabilities are the ones the template needed; the change view says which.
+      def changes(list, capabilities: nil)
         Kernel.raise NotImplementedError
       end
 
       # Asks a yes-or-no question. Returns true for yes.
       def ask(question)
+        Kernel.raise NotImplementedError
+      end
+
+      # Asks the person to type text, exactly. Returns true only when they did.
+      def confirm(text)
         Kernel.raise NotImplementedError
       end
 
@@ -49,6 +94,12 @@ module RubyCdk
       def retained(list)
         Kernel.raise NotImplementedError
       end
+
+      # Says what the engine is doing or about to do, when it is none of the above:
+      # that a failed stack is being deleted, that a change set was left unexecuted.
+      def announce(text)
+        Kernel.raise NotImplementedError
+      end
     end
 
     # The port to CloudFormation. Everything behind it is the AWS SDK, or a fake.
@@ -62,6 +113,16 @@ module RubyCdk
       end
 
       def stack_info(name)
+        Kernel.raise NotImplementedError
+      end
+
+      # The parameters the stack was last deployed with: { parameter key => value }.
+      def stack_parameters(name)
+        Kernel.raise NotImplementedError
+      end
+
+      # The tags on the stack: an Array of { key:, value: }.
+      def stack_tags(name)
         Kernel.raise NotImplementedError
       end
 
@@ -89,6 +150,14 @@ module RubyCdk
         Kernel.raise NotImplementedError
       end
 
+      # Every stack that is not deleted.
+      def list_stacks
+        Kernel.raise NotImplementedError
+      end
+
+      # after is a Time: only the events newer than it, oldest first. nil asks for
+      # the events of the operation in progress, leaving the moment to the client,
+      # which knows the clock skew between this machine and AWS.
       def events(name_or_id, after:)
         Kernel.raise NotImplementedError
       end
@@ -98,6 +167,13 @@ module RubyCdk
       end
 
       def update_termination_protection(name, enabled:)
+        Kernel.raise NotImplementedError
+      end
+
+      # Optional. The events CloudFormation recorded while it validated a change
+      # set that failed to be created. NotImplementedError, or any error, means
+      # they cannot be read; the engine then reports the reason alone.
+      def operation_events(name, change_set_id)
         Kernel.raise NotImplementedError
       end
     end

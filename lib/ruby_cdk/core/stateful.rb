@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../errors"
+
 module RubyCdk
   module Core
     # The safe defaults of architecture §7 (D-007): the resource types the CDK
@@ -10,6 +12,11 @@ module RubyCdk
     # 78649cb7cf7399204ed63f629964779eeaa8b37a: each of these L2 constructs ends
     # with `applyRemovalPolicy(props.removalPolicy)`, whose default is
     # `RemovalPolicy.RETAIN`; the RDS ones pass `?? RemovalPolicy.SNAPSHOT`.
+    #
+    # One value sets both attributes, as the CDK's removal policy does
+    # (cfn-resource.ts, applyRemovalPolicy): Delete is Delete and Delete,
+    # Retain is Retain and Retain, RetainExceptOnCreate is RetainExceptOnCreate
+    # and Retain, Snapshot is Snapshot and Snapshot.
     module Stateful
       # The two values of `stateful_default:`.
       DEFAULTS = %i[retain_except_on_create delete].freeze
@@ -33,15 +40,6 @@ module RubyCdk
         AWS::RDS::DBCluster
       ].freeze
 
-      # What each kind of stateful resource gets, as [DeletionPolicy, UpdateReplacePolicy].
-      #
-      # With `:delete` the DeletionPolicy is written out rather than left out:
-      # CloudFormation's own default for an RDS instance is a snapshot, and the
-      # user asked for a teardown that leaves nothing behind.
-      RETAIN = %w[ RetainExceptOnCreate Retain ].freeze
-      SNAPSHOT = %w[ Snapshot Snapshot ].freeze
-      DELETE = [ "Delete", nil ].freeze
-
       DELETION_POLICIES = {
         delete: "Delete",
         retain: "Retain",
@@ -56,25 +54,41 @@ module RubyCdk
         snapshot: "Snapshot"
       }.freeze
 
+      # What a deletion policy means for [DeletionPolicy, UpdateReplacePolicy].
+      PAIRS = {
+        "Delete" => %w[ Delete Delete ],
+        "Retain" => %w[ Retain Retain ],
+        "RetainExceptOnCreate" => %w[ RetainExceptOnCreate Retain ],
+        "Snapshot" => %w[ Snapshot Snapshot ]
+      }.freeze
+
       module_function
 
       # [DeletionPolicy, UpdateReplacePolicy] for a resource type when the user
       # gave neither, or nil for a type that is not stateful.
+      #
+      # Under `:delete` both are written out rather than left out, as they are
+      # when a CDK construct is told RemovalPolicy.DESTROY: CloudFormation's own
+      # default for an RDS instance is a snapshot, and the user asked for a
+      # teardown that leaves nothing behind.
       def policies_for(type, default:)
         kind = stateful_kind(type)
         return nil unless kind
 
-        if kind == :snapshot && default == :retain_except_on_create
-          SNAPSHOT
-        elsif default == :delete
-          DELETE
+        if default == :delete
+          PAIRS.fetch("Delete")
         else
-          RETAIN
+          PAIRS.fetch(kind == :snapshot ? "Snapshot" : "RetainExceptOnCreate")
         end
       end
 
       def stateful?(type)
         !stateful_kind(type).nil?
+      end
+
+      # [DeletionPolicy, UpdateReplacePolicy] for a deletion policy the user gave.
+      def pair(deletion_policy)
+        PAIRS.fetch(deletion_policy)
       end
 
       # Raises UsageError unless value is one of the two defaults. Returns it as a Symbol.
@@ -88,34 +102,36 @@ module RubyCdk
       end
 
       # The CloudFormation name of a `deletion_policy:` as the user wrote it
-      # (a Symbol or the name itself), nil when absent. Anything else is a UsageError.
-      def deletion_policy(value)
-        policy(value, DELETION_POLICIES, "deletion_policy")
+      # (a Symbol or the name itself), nil when absent. Anything else is a
+      # UsageError, whose message starts with where when it is given.
+      def deletion_policy(value, where: nil)
+        policy(value, DELETION_POLICIES, "deletion_policy", where)
       end
 
       # The same for `update_replace_policy:`.
-      def update_replace_policy(value)
-        policy(value, UPDATE_REPLACE_POLICIES, "update_replace_policy")
+      def update_replace_policy(value, where: nil)
+        policy(value, UPDATE_REPLACE_POLICIES, "update_replace_policy", where)
       end
 
-      private
-
+      # :retained or :snapshot for a stateful type, nil for any other.
       def stateful_kind(type)
-        return :retain if RETAINED_TYPES.include?(type)
+        return :retained if RETAINED_TYPES.include?(type)
         return :snapshot if SNAPSHOT_TYPES.include?(type)
       end
 
-      def policy(value, names, keyword)
+      def policy(value, names, keyword, where)
         return nil if value.nil?
 
         canonical = names[value] || (names.value?(value) ? value : nil)
         unless canonical
           allowed = names.values.join(", ")
-          raise UsageError, "#{keyword}: #{value.inspect} is not one of #{allowed}"
+          prefix = where ? "#{where}: " : ""
+          raise UsageError, "#{prefix}#{keyword}: #{value.inspect} is not one of #{allowed}"
         end
 
         canonical
       end
+      private_class_method :stateful_kind, :policy
     end
   end
 end

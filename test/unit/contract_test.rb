@@ -79,7 +79,8 @@ class ContractTest < Minitest::Test
     assert_parameter RubyCdk::Assets::Builder, :initialize, :stack, :req
     assert_parameter RubyCdk::Assets::Builder, :zip, :path, :req
     assert_parameter RubyCdk::Assets::Builder, :zip, :exclude, :key
-    %i[hash key bucket s3_location].each do |name|
+    # Not hash: Object#hash must answer an Integer, so an asset could not be a Hash key.
+    %i[asset_hash key bucket s3_location].each do |name|
       assert RubyCdk::Assets::Zip.method_defined?(name), "Assets::Zip##{name} is missing"
     end
   end
@@ -91,16 +92,18 @@ class ContractTest < Minitest::Test
     assert_equal %i[logical_id status physical_id], RubyCdk::Deploy::StackResource.members
     assert_equal %i[account region arn], RubyCdk::Deploy::Identity.members
     assert_equal %i[name id status outputs termination_protection], RubyCdk::Deploy::StackInfo.members
+    assert_equal %i[name id status], RubyCdk::Deploy::ListedStack.members
     assert_equal %i[absent review stable rollback_complete rollback_failed busy], RubyCdk::Deploy::STACK_STATES
   end
 
   def test_deploy_ports
-    %i[target changes ask event outputs failure retained].each do |name|
+    %i[target changes ask confirm event outputs failure retained announce].each do |name|
       assert RubyCdk::Deploy::Output.method_defined?(name), "Output##{name} is missing"
     end
 
-    %i[resolve_identity stack_state stack_info create_change_set describe_change_set execute_change_set delete_change_set
-       delete_stack list_resources events get_template update_termination_protection].each do |name|
+    %i[resolve_identity stack_state stack_info stack_parameters stack_tags list_stacks create_change_set describe_change_set
+       execute_change_set delete_change_set delete_stack list_resources events get_template update_termination_protection
+       operation_events].each do |name|
       assert RubyCdk::Deploy::CfnClient.method_defined?(name), "CfnClient##{name} is missing"
     end
     assert_parameter RubyCdk::Deploy::CfnClient, :create_change_set, :template, :keyreq
