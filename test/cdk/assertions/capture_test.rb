@@ -133,8 +133,8 @@ class CdkAssertionsCaptureTest < Minitest::Test
     matcher.test({
       "foo" => {
         "bar" => "baz",
-        "fred" => "waldo",
-      },
+        "fred" => "waldo"
+      }
     }).finished
 
     assert_equal({ "bar" => "baz", "fred" => "waldo" }, capture.as_object)
@@ -148,8 +148,8 @@ class CdkAssertionsCaptureTest < Minitest::Test
 
     matcher.test({
       "foo" => {
-        "fred" => "waldo",
-      },
+        "fred" => "waldo"
+      }
     }).finished
 
     assert_thrown(/No value captured/) { capture.as_object }
@@ -159,15 +159,15 @@ class CdkAssertionsCaptureTest < Minitest::Test
   def test_capture_in_array_with_and_object_like
     capture = T::Capture.new
     matcher = T.object_like({
-      "People" => T.array_with([{
+      "People" => T.array_with([ {
         "Name" => "Alice",
         "Attributes" => [
           T.object_like({
             "Name" => "HairColor",
-            "Value" => capture,
-          }),
-        ],
-      }]),
+            "Value" => capture
+          })
+        ]
+      } ])
     })
 
     result = matcher.test({
@@ -175,10 +175,10 @@ class CdkAssertionsCaptureTest < Minitest::Test
         {
           "Name" => "Alice",
           "Attributes" => [
-            { "Name" => "HairColor", "Value" => "Black" },
-          ],
-        },
-      ],
+            { "Name" => "HairColor", "Value" => "Black" }
+          ]
+        }
+      ]
     })
 
     assert_equal true, result.is_success?

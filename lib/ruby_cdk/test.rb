@@ -41,18 +41,18 @@ module RubyCdk
     class << self
       # Base your assertions on the CloudFormation template of a stack, of a Hash,
       # or of a JSON string. See RubyCdk::Test::Template.template.
-      def template(source, skip_cyclical_dependencies_check: false)
-        Template.template(source, skip_cyclical_dependencies_check: skip_cyclical_dependencies_check)
+      def template(source, options = {})
+        Template.template(source, options)
       end
 
       # Base your assertions from a CloudFormation template as a JSON string.
-      def from_string(template, skip_cyclical_dependencies_check: false)
-        Template.from_string(template, skip_cyclical_dependencies_check: skip_cyclical_dependencies_check)
+      def from_string(template, options = {})
+        Template.from_string(template, options)
       end
 
       # Base your assertions from a CloudFormation template as a Hash.
-      def from_json(template, skip_cyclical_dependencies_check: false)
-        Template.from_json(template, skip_cyclical_dependencies_check: skip_cyclical_dependencies_check)
+      def from_json(template, options = {})
+        Template.from_json(template, options)
       end
 
       # Use this matcher in the place of a field's value, if the field must not be present.

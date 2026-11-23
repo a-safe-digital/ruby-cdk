@@ -164,10 +164,10 @@ class CdkAssertionsTemplateTest < Minitest::Test
 
     inspect = T.template(stack)
     inspect.resource_properties_count_is("Foo::Bar", {
-      "bar" => T.absent,
+      "bar" => T.absent
     }, 1)
     inspect.resource_properties_count_is("Foo::Bar", {
-      "baz" => T.absent,
+      "baz" => T.absent
     }, 0)
   end
 
@@ -178,7 +178,7 @@ class CdkAssertionsTemplateTest < Minitest::Test
     inspect = T.template(stack)
     inspect.resource_properties_count_is("Foo::Bar", {
       "bar" => T.absent,
-      "baz" => "qux",
+      "baz" => "qux"
     }, 0)
     inspect.resource_properties_count_is("Foo::Bar", T.absent, 1)
   end
@@ -189,7 +189,7 @@ class CdkAssertionsTemplateTest < Minitest::Test
 
     inspect = T.template(stack)
     inspect.resource_properties_count_is("Foo::Bar", T.not_({
-      "baz" => "boo",
+      "baz" => "boo"
     }), 1)
   end
 
@@ -199,7 +199,7 @@ class CdkAssertionsTemplateTest < Minitest::Test
 
     inspect = T.template(stack)
     inspect.resource_properties_count_is("Foo::Bar", T.not_({
-      "baz" => "qux",
+      "baz" => "qux"
     }), 1)
   end
 
@@ -390,12 +390,12 @@ class CdkAssertionsTemplateTest < Minitest::Test
     inspect = T.template(stack)
 
     inspect.has_resource_properties("Foo::Bar", {
-      "bar" => T.absent,
+      "bar" => T.absent
     })
 
     assert_thrown(/key should be absent/) do
       inspect.has_resource_properties("Foo::Bar", {
-        "baz" => T.absent,
+        "baz" => T.absent
       })
     end
   end
@@ -417,7 +417,7 @@ class CdkAssertionsTemplateTest < Minitest::Test
 
     inspect = T.template(stack)
     inspect.has_resource_properties("Foo::Bar", T.not_({
-      "baz" => "boo",
+      "baz" => "boo"
     }))
   end
 

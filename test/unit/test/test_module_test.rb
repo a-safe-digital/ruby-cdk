@@ -11,15 +11,20 @@ class TestModuleTest < Minitest::Test
   # RubyCdk::Test, by a short name.
   T = RubyCdk::Test
 
-  LIB = File.expand_path("../../lib", __dir__)
+  LIB = File.expand_path("../../../lib", __dir__)
 
   # The module's files, relative to lib/: what the component map gives to test_kit.
   OWN = [ "ruby_cdk/test.rb", "ruby_cdk/test" ].freeze
 
+  # The matcher factories and the arguments of one call of each.
   MATCHERS = {
     absent: [], array_with: [ [] ], array_equals: [ [] ], exact: [ 1 ], object_like: [ {} ], object_equals: [ {} ],
     not_: [ 1 ], serialized_json: [ {} ], any_value: [], string_like_regexp: [ "x" ]
   }.freeze
+
+  # The name a matcher carries into a message: that of the CDK's matcher, which is
+  # the method's name here except for not_, since `not` is a Ruby keyword.
+  NAMES = MATCHERS.keys.to_h { |name| [ name, name == :not_ ? "not" : name.to_s ] }.freeze
 
   def test_every_file_of_the_module_loads_only_json_or_another_of_them
     violations = own_files.flat_map do |file|
@@ -39,8 +44,15 @@ class TestModuleTest < Minitest::Test
     assert_empty violations, violations.join("\n")
   end
 
+  def test_the_module_loads_nothing_with_load_or_autoload
+    kinds = own_files.flat_map { |file| loads_in(File.read(file)) }.map(&:last).uniq.sort
+
+    assert_equal [ :require, :require_relative ], kinds
+  end
+
   def test_requiring_the_module_loads_every_file_of_it
-    missing = own_files.map { |file| File.realpath(file) }.reject { |file| $LOADED_FEATURES.include?(file) }
+    loaded = $LOADED_FEATURES.select { |feature| File.file?(feature) }.to_h { |feature| [ File.realpath(feature), true ] }
+    missing = own_files.map { |file| File.realpath(file) }.reject { |file| loaded[file] }
 
     assert_empty missing, "not loaded by require \"ruby_cdk/test\": #{missing.join(", ")}"
   end
@@ -57,15 +69,15 @@ class TestModuleTest < Minitest::Test
       matcher = T.public_send(name, *arguments)
 
       assert T::Matcher.matcher?(matcher), "RubyCdk::Test.#{name} is not a Matcher"
-      assert_equal name.to_s, matcher.name
-      assert_instance_of T::Matcher, matcher.class.superclass, "#{name} is not one of the engine's own matchers"
+      assert_equal NAMES.fetch(name), matcher.name
+      assert_equal T::Matcher, matcher.class.superclass, "#{name} is not one of the engine's own matchers"
     end
   end
 
   def test_the_matchers_are_also_on_match_as_in_the_cdk
     MATCHERS.each_key do |name|
       assert_respond_to T::Match, name, "RubyCdk::Test::Match.#{name} is missing"
-      assert_equal name.to_s, T::Match.public_send(name, *MATCHERS[name]).name
+      assert_equal NAMES.fetch(name), T::Match.public_send(name, *MATCHERS.fetch(name)).name
     end
   end
 
