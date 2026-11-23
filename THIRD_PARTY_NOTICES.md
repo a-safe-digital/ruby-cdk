@@ -18,7 +18,7 @@ Copyright 2018-2026 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 Repository: <https://github.com/aws/aws-cdk>. Licence: Apache-2.0, the full text of which is at the end of this file.
 
-Every file below was read at commit `025a6f67fec3d37a6ffdc6168f8a751a04918f66` (the head of `main` on 2026-11-23). The matcher engine of the CDK lives in the internal `matching` package, which the `assertions` package re-exports: the files ported from it say so.
+The files of the test kit were read at commit `025a6f67fec3d37a6ffdc6168f8a751a04918f66` (the head of `main` on 2026-11-23); every other row names its own commit. The matcher engine of the CDK lives in the internal `matching` package, which the `assertions` package re-exports: the files ported from it say so.
 
 #### Code: `RubyCdk::Test`, the equivalent of `aws-cdk-lib/assertions`
 
@@ -55,6 +55,34 @@ Every file below was read at commit `025a6f67fec3d37a6ffdc6168f8a751a04918f66` (
 | `test/cdk/assertions/template_test.rb` | `packages/aws-cdk-lib/assertions/test/template.test.ts` | Apache-2.0 | 82 ported, 3 not ported (listed in the header of the file) |
 
 Two files of the package are not ported, because they test what this tool does not have: `annotations.test.ts` (23 cases, the CDK's synth-time annotations) and `tags.test.ts` (10 cases, the `Tags` aspect).
+
+#### Tests: other suites of the CDK, ported
+
+| File in this repository | Ported from | Read at | Cases |
+|---|---|---|---|
+| `test/cdk/core/fn_test.rb` | `packages/aws-cdk-lib/core/test/fn.test.ts` | `78649cb7cf7399204ed63f629964779eeaa8b37a` | 14 of 23 ported; the others listed in the header |
+| `test/unit/assets/hasher_test.rb` | `packages/aws-cdk-lib/core/test/fs/fs-fingerprint.test.ts`, `packages/aws-cdk-lib/aws-s3-assets/test/asset.test.ts`, `packages/aws-cdk-lib/core/test/staging.test.ts` | `78649cb7cf7399204ed63f629964779eeaa8b37a` | 9 ported; the others listed in the header |
+
+#### Fixtures: the corpus sample
+
+| Directory in this repository | Taken from | Read at | Licence | What it is |
+|---|---|---|---|---|
+| `test/fixtures/corpus/templates/` (400 files, chosen as `META.json` says) | every `*.template.json` of the repository, copied byte for byte | `622f51fa4999d5557c1d1da292c04cc186ac6818` | Apache-2.0 | Templates the CDK synthesized; the validator is measured against them |
+
+The sample follows the CDK: the weekly job in `.github/workflows/audit.yml` fetches its templates again and moves the sample, and `META.json` then names the commit.
+
+### AWS Cloud Development Kit CLI
+
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+Repository: <https://github.com/aws/aws-cdk-cli>. Licence: Apache-2.0, the full text of which is at the end of this file.
+
+#### Tests: the publisher of assets, ported
+
+| File in this repository | Ported from | Read at | Cases |
+|---|---|---|---|
+| `test/unit/assets/zipper_test.rb` | `packages/@aws-cdk/private-tools/test/zip/zip.test.ts`, `packages/@aws-cdk/cdk-assets-lib/test/archive.test.ts` | `eca1b73d682d7763955bec30ab5dd52bbc4327b6` | 7 ported; the others listed in the header |
+| `test/unit/assets/uploader_test.rb` | `packages/@aws-cdk/cdk-assets-lib/test/files.test.ts`, `packages/@aws-cdk/cdk-assets-lib/test/zipping.test.ts` | `eca1b73d682d7763955bec30ab5dd52bbc4327b6` | 6 ported; the others listed in the header |
 
 ## Licence texts
 
