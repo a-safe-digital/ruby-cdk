@@ -20,6 +20,24 @@ module RubyCdk
     def self.bucket_name(account, region)
       "#{BUCKET_PREFIX}#{account}-#{region}"
     end
+
+    # Uploads, before any change set, what the deploy of a stack needs in its
+    # bucket: the zips of the assets the stack resolved (architecture §8). The
+    # command that deploys calls it after synthesis, in the same process, so the
+    # records are the ones synthesis built.
+    #
+    # store is the object-store port. owner is the account that must own the
+    # bucket. A stack with no asset uploads nothing and checks nothing, which
+    # is what lets it deploy into an account that was never bootstrapped.
+    #
+    # Answers { uploaded:, skipped: }. Raises what Uploader raises: a bucket
+    # that is not ours stops the deploy before anything is looked up.
+    def self.publish(stack, store:, owner:)
+      records = stack.asset.records
+      return { uploaded: 0, skipped: 0 } if records.empty?
+
+      Uploader.new(store:, owner:).upload_all(records, bucket: bucket_name(stack.env.account, stack.env.region))
+    end
   end
 
   # The tree's contract declares these; here are the implementations, in the
