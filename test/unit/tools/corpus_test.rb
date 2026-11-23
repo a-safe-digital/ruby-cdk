@@ -32,7 +32,7 @@ class CorpusTest < Minitest::Test
       file = File.join(root, path)
       FileUtils.mkdir_p(File.dirname(file))
       File.write(file, body)
-      [path, file]
+      [ path, file ]
     end
   end
 
@@ -48,7 +48,7 @@ class CorpusTest < Minitest::Test
 
   # What a file holds, and when it was last written.
   def state(file)
-    [File.binread(file), File.mtime(file)]
+    [ File.binread(file), File.mtime(file) ]
   end
 
   ## resource_types
@@ -232,6 +232,9 @@ class CorpusTest < Minitest::Test
       "packages/@aws-cdk/aws-imagebuilder-alpha/test/x.js.snapshot/a.template.json" => [ "imagebuilder", "aws-imagebuilder-alpha" ],
       "packages/@aws-cdk/aws-eks-v2-alpha/test/x.js.snapshot/a.template.json" => [ "eks", "aws-eks-v2-alpha" ],
       "packages/@aws-cdk/mixins-preview/test/x.js.snapshot/a.template.json" => [ "mixins-preview", "mixins-preview" ],
+      # The CDK keeps one scoped package outside packages/.
+      "tools/@aws-cdk/security-guardian/test/templates/a.template.json" => [ "security-guardian", "security-guardian" ],
+      "/tmp/a-checkout/aws-cdk/tools/@aws-cdk/security-guardian/test/templates/a.template.json" => [ "security-guardian", "security-guardian" ],
       "packages/aws-cdk-lib/aws-servicecatalog/test/a.template.json" => [ "servicecatalog", "aws-servicecatalog" ],
       "packages/@aws-cdk-testing/framework-integ/product-stack-snapshots/x.v1.product.template.json" => [ "product-stack-snapshots", "product-stack-snapshots" ],
       "/tmp/a-checkout/aws-cdk/#{integ("aws-iam", "role")}" => [ "iam", "aws-iam" ]
@@ -351,6 +354,58 @@ class CorpusTest < Minitest::Test
     end
   end
 
+  ## The cap on templates without Resources
+
+  # A corpus where a third of the templates deploy nothing: for every two stacks, an assertion stack.
+  def corpus_with_assertion_stacks
+    stacks = corpus("aws-ec2" => 120, "aws-s3" => 60, "aws-signer" => 6)
+    [ stacks, stacks.each_slice(3).map(&:last) ]
+  end
+
+  def test_the_sample_holds_at_most_a_few_templates_without_resources
+    stacks, bare = corpus_with_assertion_stacks
+    uncapped = Tools::Corpus.select_sample(stacks, count: 40)
+    sample = Tools::Corpus.select_sample(stacks, count: 40, without_resources: bare, at_most: 5)
+
+    assert_operator uncapped.count { |path, _| bare.include?(path) }, :>, 5
+    assert_equal 40, sample.size
+    assert_equal 5, sample.count { |path, _| bare.include?(path) }
+    assert_equal sample, Tools::Corpus.select_sample(stacks.reverse, count: 40, without_resources: bare, at_most: 5)
+    assert_equal sample.map(&:first).sort, sample.map(&:first)
+    assert_equal seats(uncapped), seats(sample)
+
+    # What gives way is replaced from its own service: by the templates with Resources that come
+    # next in the service's order.
+    %w[aws-ec2 aws-s3 aws-signer].each do |module_name|
+      service = module_name.delete_prefix("aws-")
+      with_resources = stacks.reject { |path| bare.include?(path) || Tools::Corpus.module_of(path) != module_name }
+      kept_bare = chosen(sample, service).count { |path| bare.include?(path) }
+      expected = with_resources.min_by(seats(sample).fetch(service) - kept_bare) { |path| [ Tools::Corpus.sample_key(path), path ] }
+
+      assert_equal expected.sort, chosen(sample, service).reject { |path| bare.include?(path) }, service
+    end
+  end
+
+  def test_no_template_without_resources_is_taken_when_none_may_be
+    stacks, bare = corpus_with_assertion_stacks
+
+    assert Tools::Corpus.select_sample(stacks, count: 40, without_resources: bare, at_most: 0).none? { |path, _| bare.include?(path) }
+    # A corpus that fits in the count is all taken, whatever it holds.
+    assert_equal stacks.first(9).sort,
+      Tools::Corpus.select_sample(stacks.first(9), count: 40, without_resources: bare, at_most: 0).map(&:first)
+  end
+
+  def test_a_template_without_resources_is_left_out_when_its_service_has_none_to_give
+    paths = corpus("aws-ec2" => 20, "aws-s3" => 20)
+    bare = paths.first(20)
+
+    sample = Tools::Corpus.select_sample(paths, count: 8, without_resources: bare, at_most: 2)
+
+    assert_equal 6, sample.size
+    assert_equal 2, sample.count { |path, _| bare.include?(path) }
+    assert_equal({ "ec2" => 2, "s3" => 4 }, seats(sample))
+  end
+
   ## sample_name
 
   def test_sample_names_are_the_path_and_never_too_long
@@ -448,11 +503,35 @@ class CorpusTest < Minitest::Test
       assert_equal [ 25, 25, 1, 0, 0 ], meta["corpus"].values_at("templates", "framework_integ", "resource_types", "without_resources", "unparseable")
       assert_equal paths.sum { |path| File.size(templates.fetch(path)) }, meta["corpus"]["bytes"]
       assert_equal({ "chatbot" => 2, "ec2" => 12, "s3" => 6, "signer" => 5 }, meta["corpus"]["services"])
-      assert_equal [ 10, 1, 0 ], meta["sample"].values_at("templates", "resource_types", "without_resources")
+      assert_equal [ 10, 1, 0, 1 ], meta["sample"].values_at("templates", "resource_types", "without_resources", "without_resources_cap")
       assert_equal seats(sample).sort, meta["sample"]["services"].sort
       assert_equal({ written: 10, rewritten: 0, unchanged: 0 }, report[:files])
       assert report[:meta_written]
       assert_empty report[:stale]
+    end
+  end
+
+  def test_write_sample_caps_the_templates_without_resources_and_says_so
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "cdk")
+      stacks = corpus("aws-ec2" => 60, "aws-s3" => 30)
+      bare = stacks.each_slice(3).map(&:last)
+      templates = write_templates(source, stacks - bare).merge(
+        write_templates(source, bare, body: '{"Parameters":{"BootstrapVersion":{"Type":"String"}},"Rules":{}}'))
+      destination = File.join(dir, "fixtures")
+
+      report = Tools::Corpus.write_sample(destination:, templates:, commit: COMMIT, date: "2026-11-20", count: 40)
+
+      sample = report[:meta]["sample"]
+      assert_equal [ 40, 5, 5, 1 ], sample.values_at("templates", "without_resources", "without_resources_cap", "resource_types")
+      # One seat to each service, then 38 in proportion to 60 and 30: 25 and 12, and the one left
+      # to the larger remainder. The cap moves nothing between services.
+      assert_equal({ "ec2" => 26, "s3" => 14 }, sample["services"])
+      assert_equal 30, report[:meta]["corpus"]["without_resources"]
+      assert_equal 5, sample["without_resources_cap"] # 50 of every 400
+      assert_equal Tools::Corpus::WITHOUT_RESOURCES_CAP_REASON, sample["without_resources_cap_reason"]
+      files = Tools::Corpus.each_sample_template(File.join(destination, "templates")).to_a
+      assert_equal 5, files.count { |file| Tools::Corpus.load(file).keys.sort == %w[Parameters Rules] }
     end
   end
 
@@ -557,6 +636,8 @@ class CorpusTest < Minitest::Test
 
       assert_equal({ written: 18, rewritten: 0, unchanged: 0 }, report[:files])
       assert_equal({ "ec2" => 8, "signer" => 10 }, report[:meta]["sample"]["services"])
+      # The whole corpus fits, so there was no cap to apply and none to record.
+      refute report[:meta]["sample"].key?("without_resources_cap")
       assert_equal 3, report[:meta]["corpus"]["unparseable"]
       assert_equal 5, report[:meta]["sample"]["without_resources"]
       assert_equal 1, report[:meta]["sample"]["resource_types"]
@@ -592,6 +673,14 @@ class CorpusTest < Minitest::Test
       "templates without a Resources key on disk, and in META.json: #{without.keys.first(3).map { |file| File.basename(file) }.inspect}"
     assert without.values.all? { |template| (template.keys - %w[Outputs Parameters Rules]).empty? && template.keys.any? },
       "a template without a Resources key that holds more than Parameters, Rules and Outputs: #{without.reject { |_, template| (template.keys - %w[Outputs Parameters Rules]).empty? }.keys.first(3).inspect}"
+
+    # The sample does not let them take a third of its seats, and it still represents every
+    # service that has MIN_STRATUM templates in the corpus.
+    assert_operator sample["without_resources"], :<=, sample["without_resources_cap"]
+    assert_equal Tools::Corpus::WITHOUT_RESOURCES_CAP, sample["without_resources_cap"]
+    assert_equal Tools::Corpus::WITHOUT_RESOURCES_CAP_REASON, sample["without_resources_cap_reason"]
+    assert_equal sample["services"].values.sum, sample["templates"]
+    assert_empty meta["corpus"]["services"].select { |_, count| count >= Tools::Corpus::MIN_STRATUM }.keys - sample["services"].keys
     # The names are paths with every "/" doubled, and the long ones carry a digest of their path.
     names = files.map { |file| File.basename(file) }
     assert names.all? { |name| name.end_with?(Tools::Corpus::SUFFIX) && name.include?("__") }
@@ -605,9 +694,10 @@ class CorpusTest < Minitest::Test
     megabytes = ->(bytes) { format("%.2f MB", bytes / 1e6) }
     puts
     puts "corpus sample: #{sample["templates"]} templates, #{sample["bytes"]} bytes (#{megabytes.call(sample["bytes"])}), " \
-      "#{sample["resource_types"]} distinct resource types, #{sample["services"].size} services, #{without.size} without a Resources key"
+      "#{sample["resource_types"]} distinct resource types, #{sample["services"].size} services, " \
+      "#{without.size} without a Resources key (at most #{sample["without_resources_cap"]})"
     puts "corpus sample, most templates per service: " \
-      "#{sample["services"].sort_by { |service, count| [-count, service] }.first(5).map { |service, count| "#{service} #{count}" }.join(", ")}"
+      "#{sample["services"].sort_by { |service, count| [ -count, service ] }.first(5).map { |service, count| "#{service} #{count}" }.join(", ")}"
     puts "corpus: #{meta["corpus"]["templates"]} templates, #{meta["corpus"]["bytes"]} bytes (#{megabytes.call(meta["corpus"]["bytes"])}), " \
       "#{meta["corpus"]["resource_types"]} distinct resource types, #{meta["corpus"]["services"].size} services, " \
       "aws/aws-cdk@#{meta["commit"][0, 12]} of #{meta["date"]}"

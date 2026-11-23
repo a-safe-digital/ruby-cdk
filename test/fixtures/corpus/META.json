@@ -90,6 +90,7 @@
       "sagemaker": 10,
       "scheduler": 33,
       "secretsmanager": 8,
+      "security-guardian": 7,
       "servicecatalog": 27,
       "servicecatalogappregistry": 20,
       "servicediscovery": 4,
@@ -100,17 +101,16 @@
       "ssm": 18,
       "stepfunctions": 229,
       "synthetics": 26,
-      "triggers": 2,
-      "unclassified": 7
+      "triggers": 2
     },
     "framework_integ": 3142,
     "unparseable": 0
   },
   "sample": {
     "templates": 400,
-    "bytes": 2480172,
-    "resource_types": 286,
-    "without_resources": 123,
+    "bytes": 3009140,
+    "resource_types": 320,
+    "without_resources": 50,
     "services": {
       "amplify": 3,
       "apigateway": 8,
@@ -184,6 +184,7 @@
       "sagemaker": 2,
       "scheduler": 4,
       "secretsmanager": 2,
+      "security-guardian": 2,
       "servicecatalog": 3,
       "servicecatalogappregistry": 3,
       "ses": 3,
@@ -191,8 +192,9 @@
       "sqs": 2,
       "ssm": 2,
       "stepfunctions": 19,
-      "synthetics": 3,
-      "unclassified": 2
-    }
+      "synthetics": 3
+    },
+    "without_resources_cap": 50,
+    "without_resources_cap_reason": "A stack without Resources is valid CloudFormation and the validator must accept it, but it exercises no resource type, so the seats it does not take go to templates that have Resources."
   }
 }
