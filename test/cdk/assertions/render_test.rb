@@ -33,10 +33,10 @@ class CdkAssertionsRenderTest < Minitest::Test
   def test_match_object_like_with_mismatched_string_value
     target = {
       "Value" => "Balue",
-      "Other" => "Other",
+      "Other" => "Other"
     }
     matcher = T.object_like({
-      "Value" => "Value",
+      "Value" => "Value"
     })
 
     assert_rendered [
@@ -54,13 +54,13 @@ class CdkAssertionsRenderTest < Minitest::Test
     target = {
       "Deep" => {
         "Value" => "Balue",
-        "Other" => "Other",
-      },
+        "Other" => "Other"
+      }
     }
     matcher = T.object_like({
       "Deep" => {
-        "Value" => "Value",
-      },
+        "Value" => "Value"
+      }
     })
 
     assert_rendered [
@@ -79,10 +79,10 @@ class CdkAssertionsRenderTest < Minitest::Test
   def test_match_object_equals_with_unexpected_key
     target = {
       "Value" => "Value",
-      "Other" => "Other",
+      "Other" => "Other"
     }
     matcher = T.object_equals({
-      "Value" => "Value",
+      "Value" => "Value"
     })
 
     assert_rendered [
@@ -99,7 +99,7 @@ class CdkAssertionsRenderTest < Minitest::Test
   def test_match_object_equals_with_missing_key
     target = {}
     matcher = T.object_equals({
-      "Value" => "Value",
+      "Value" => "Value"
     })
 
     assert_rendered [
@@ -114,10 +114,10 @@ class CdkAssertionsRenderTest < Minitest::Test
   # Match.objectLike looking for absent key
   def test_match_object_like_looking_for_absent_key
     target = {
-      "Value" => "Value",
+      "Value" => "Value"
     }
     matcher = T.object_equals({
-      "Value" => T.absent,
+      "Value" => T.absent
     })
 
     assert_rendered [
@@ -133,10 +133,10 @@ class CdkAssertionsRenderTest < Minitest::Test
   def test_abridged_rendering_of_uninteresting_keys_showing_other
     target = {
       "Other" => { "OneKey" => "Visible" },
-      "Value" => "Value",
+      "Value" => "Value"
     }
     matcher = T.object_like({
-      "Value" => "Balue",
+      "Value" => "Balue"
     })
 
     assert_rendered [
@@ -153,10 +153,10 @@ class CdkAssertionsRenderTest < Minitest::Test
   def test_abridged_rendering_of_uninteresting_keys_hiding_other
     target = {
       "Other" => { "OneKey" => "Visible", "TooMany" => "Keys" },
-      "Value" => "Value",
+      "Value" => "Value"
     }
     matcher = T.object_like({
-      "Value" => "Balue",
+      "Value" => "Balue"
     })
 
     assert_rendered [
@@ -173,13 +173,13 @@ class CdkAssertionsRenderTest < Minitest::Test
   def test_encoded_json_matcher
     target = {
       "Json" => JSON.generate({
-        "Value" => "Value",
-      }),
+        "Value" => "Value"
+      })
     }
     matcher = T.object_like({
       "Json" => T.serialized_json({
-        "Value" => "Balue",
-      }),
+        "Value" => "Balue"
+      })
     })
 
     assert_rendered [
@@ -202,13 +202,13 @@ class CdkAssertionsRenderTest < Minitest::Test
         { "Value" => "1", "MakeItBig" => true },
         { "Value" => "2", "MakeItBig" => true },
         { "Value" => "3", "MakeItBig" => true },
-        { "Value" => "4", "MakeItBig" => true },
-      ],
+        { "Value" => "4", "MakeItBig" => true }
+      ]
     }
     matcher = T.object_like({
       "List" => T.array_with([
-        T.object_like({ "Value" => "5" }),
-      ]),
+        T.object_like({ "Value" => "5" })
+      ])
     })
 
     assert_rendered [
@@ -237,14 +237,14 @@ class CdkAssertionsRenderTest < Minitest::Test
         { "Value" => "1", "MakeItBig" => true },
         { "Value" => "2", "MakeItBig" => true },
         { "Value" => "3", "MakeItBig" => true },
-        { "Value" => "4", "MakeItBig" => true },
-      ],
+        { "Value" => "4", "MakeItBig" => true }
+      ]
     }
     matcher = T.object_like({
       "List" => T.array_with([
         T.object_like({ "Value" => "2" }),
-        T.object_like({ "Value" => "5" }),
-      ]),
+        T.object_like({ "Value" => "5" })
+      ])
     })
     note = "Most entries should be collapsed but at least one should for a deep comparison, and should show a place for previous matches"
 

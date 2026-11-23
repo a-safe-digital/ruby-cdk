@@ -9,8 +9,9 @@
 #   stage the stack belongs to, is template(source): anything with a to_template
 #   method, asked by duck typing, or a Hash, or a JSON string. This tool has no
 #   Stage, App or NestedStack, so the nested-stack branch of toTemplate() has no
-#   counterpart. TemplateParsingOptions is the keyword
-#   skip_cyclical_dependencies_check. A template that is not a JSON object is an
+#   counterpart. TemplateParsingOptions is a second argument, an options Hash
+#   (with a keyword parameter of its own, `from_json("Resources" => { ... })`
+#   could not be written). A template that is not a JSON object is an
 #   ArgumentError here, where the CDK accepts it and fails later. The Symbols of a
 #   Hash become strings (Js.normalize).
 #
@@ -38,17 +39,26 @@ module RubyCdk
     #
     # Build one with RubyCdk::Test.template, from_string or from_json. Every
     # method that asserts raises RubyCdk::Test::AssertionError when it fails.
+    #
+    # The three ways of building one take their options as a second argument, the
+    # CDK's TemplateParsingOptions, and not as keywords of their own: with a
+    # keyword parameter, Ruby would read `from_json("Resources" => { ... })`, a
+    # Hash written without braces, as keywords and find no template. So both of
+    # these give the same Template:
+    #
+    #   RubyCdk::Test.from_json(template, skip_cyclical_dependencies_check: true)
+    #   RubyCdk::Test.from_json(template, { skip_cyclical_dependencies_check: true })
     class Template
       # Base your assertions on the CloudFormation template of a stack.
       #
       # In the CDK: Template.fromStack(stack). source is anything with a
       # `to_template` method, a Hash, or a template as a JSON string.
       #
-      # skip_cyclical_dependencies_check: set it to true to skip checking for
-      # cyclical / circular dependencies. It should be left false other than for
-      # templates that are valid despite containing cycles, such as unprocessed
-      # transform stacks.
-      def self.template(source, skip_cyclical_dependencies_check: false)
+      # options: :skip_cyclical_dependencies_check, true to skip checking for
+      # cyclical / circular dependencies. Leave it out other than for templates
+      # that are valid despite containing cycles, such as unprocessed transform
+      # stacks.
+      def self.template(source, options = {})
         if source.respond_to?(:to_template)
           json = source.to_template
         elsif source.is_a?(String)
@@ -59,23 +69,23 @@ module RubyCdk
           raise ArgumentError,
             "Expected a template: anything with a to_template method, a Hash or a JSON string, got #{source.class}"
         end
-        new(json, skip_cyclical_dependencies_check)
+        new(json, options[:skip_cyclical_dependencies_check])
       end
 
       # Base your assertions from an existing CloudFormation template formatted as a
       # JSON string.
       #
-      # skip_cyclical_dependencies_check: as in template.
-      def self.from_string(template, skip_cyclical_dependencies_check: false)
-        new(JSON.parse(template, max_nesting: false), skip_cyclical_dependencies_check)
+      # options: as in template.
+      def self.from_string(template, options = {})
+        new(JSON.parse(template, max_nesting: false), options[:skip_cyclical_dependencies_check])
       end
 
       # Base your assertions from an existing CloudFormation template formatted as
       # an in-memory JSON object.
       #
-      # skip_cyclical_dependencies_check: as in template.
-      def self.from_json(template, skip_cyclical_dependencies_check: false)
-        new(template, skip_cyclical_dependencies_check)
+      # options: as in template.
+      def self.from_json(template, options = {})
+        new(template, options[:skip_cyclical_dependencies_check])
       end
 
       def initialize(template, skip_cyclical_dependencies_check)

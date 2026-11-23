@@ -62,7 +62,7 @@ class CdkAssertionsMatchTest < Minitest::Test
     expect_failure(matcher, [ { "foo" => "bar", "baz" => "qux" } ], [ /Not enough elements in array/ ])
     expect_failure(matcher, [ { "foo" => "bar", "baz" => "qux" }, { "waldo" => "flob", "wobble" => "fred" } ], [
       "Expected fred but received flob at /1/waldo",
-      "Expected flob but received fred at /1/wobble",
+      "Expected flob but received fred at /1/wobble"
     ])
     expect_failure(matcher, [ { "foo" => "bar", "baz" => "qux" }, { "waldo" => "fred" } ], [ %r{Missing key.*at /1/wobble} ])
   end
@@ -75,7 +75,7 @@ class CdkAssertionsMatchTest < Minitest::Test
     expect_failure(matcher, [ "3", 5 ], [ /Expected type object but received array/ ])
     expect_failure(matcher, { "baz" => "qux" }, [
       "Unexpected key baz at /baz",
-      /Missing key.*at \/foo/,
+      /Missing key.*at \/foo/
     ])
 
     matcher = T.exact({ "foo" => "bar", "baz" => 5 })
@@ -86,15 +86,15 @@ class CdkAssertionsMatchTest < Minitest::Test
     expect_pass(matcher, { "foo" => [ 2, 3 ], "bar" => "baz" })
     expect_failure(matcher, {}, [
       /Missing key.*at \/foo/,
-      /Missing key.*at \/bar/,
+      /Missing key.*at \/bar/
     ])
     expect_failure(matcher, { "bar" => [ 2, 3 ], "foo" => "baz" }, [
       "Expected type array but received string at /foo",
-      "Expected type string but received array at /bar",
+      "Expected type string but received array at /bar"
     ])
     expect_failure(matcher, { "foo" => [ 3, 5 ], "bar" => "baz" }, [
       "Expected 2 but received 3 at /foo/0",
-      "Expected 3 but received 5 at /foo/1",
+      "Expected 3 but received 5 at /foo/1"
     ])
   end
 
@@ -205,7 +205,7 @@ class CdkAssertionsMatchTest < Minitest::Test
   # Matchers > objectLike() > ArrayMatch nested inside ObjectMatch
   def test_object_like_array_match_nested_inside_object_match
     matcher = T.object_like({
-      "foo" => T.array_with([ "bar" ]),
+      "foo" => T.array_with([ "bar" ])
     })
     expect_pass(matcher, { "foo" => [ "bar", "baz" ], "fred" => "waldo" })
     expect_failure(matcher, { "foo" => [ "baz" ], "fred" => "waldo" }, [ /Could not match array_with pattern 0/ ])
@@ -222,7 +222,7 @@ class CdkAssertionsMatchTest < Minitest::Test
     # surprising inconsistency.
     #
     matcher = T.object_like({
-      "foo" => [ { "bar" => "bar" } ],
+      "foo" => [ { "bar" => "bar" } ]
     })
     expect_pass(matcher, { "foo" => [ { "bar" => "bar" } ] }) # Trivially true
     expect_pass(matcher, { "boo" => "boo", "foo" => [ { "bar" => "bar" } ] }) # Additional members at top level okay
@@ -288,14 +288,14 @@ class CdkAssertionsMatchTest < Minitest::Test
   # Matchers > not() > as a nested matcher
   def test_not_as_a_nested_matcher
     matcher = T.exact({
-      "foo" => { "bar" => T.not_([ 1, 2 ]) },
+      "foo" => { "bar" => T.not_([ 1, 2 ]) }
     })
 
     expect_pass(matcher, {
-      "foo" => { "bar" => [ 1 ] },
+      "foo" => { "bar" => [ 1 ] }
     })
     expect_pass(matcher, {
-      "foo" => { "bar" => [ "baz" ] },
+      "foo" => { "bar" => [ "baz" ] }
     })
 
     msg = <<~MSG.chomp
@@ -305,18 +305,18 @@ class CdkAssertionsMatchTest < Minitest::Test
       ] at /foo/bar
     MSG
     expect_failure(matcher, {
-      "foo" => { "bar" => [ 1, 2 ] },
+      "foo" => { "bar" => [ 1, 2 ] }
     }, [ msg ])
   end
 
   # Matchers > not() > with nested matcher
   def test_not_with_nested_matcher
     matcher = T.not_({
-      "foo" => { "bar" => T.array_with([ 1 ]) },
+      "foo" => { "bar" => T.array_with([ 1 ]) }
     })
 
     expect_pass(matcher, {
-      "foo" => { "bar" => [ 2 ] },
+      "foo" => { "bar" => [ 2 ] }
     })
     expect_pass(matcher, "foo")
 
@@ -331,7 +331,7 @@ class CdkAssertionsMatchTest < Minitest::Test
       }
     MSG
     expect_failure(matcher, {
-      "foo" => { "bar" => [ 1, 2 ] },
+      "foo" => { "bar" => [ 1, 2 ] }
     }, [ msg ])
   end
 
@@ -383,14 +383,14 @@ class CdkAssertionsMatchTest < Minitest::Test
     expect_failure(matcher, '{ "Bar": "Baz" }', [
       /Encoded JSON value does not match/,
       "Unexpected key Bar at /Bar",
-      /Missing key.*at \/Foo/,
+      /Missing key.*at \/Foo/
     ])
   end
 
   # Matchers > serializedJson() > nested matcher
   def test_serialized_json_nested_matcher
     matcher = T.serialized_json(T.object_like({
-      "Foo" => T.array_with([ "Bar" ]),
+      "Foo" => T.array_with([ "Bar" ])
     }))
 
     expect_pass(matcher, '{ "Foo": ["Bar"] }')

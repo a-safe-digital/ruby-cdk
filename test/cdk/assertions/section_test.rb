@@ -31,7 +31,7 @@ class CdkAssertionsSectionTest < Minitest::Test
     section = {
       "Entry1" => { "foo" => "bar" },
       "Entry2" => { "foo" => "bar", "baz" => "qux" },
-      "Entry3" => { "fred" => "waldo" },
+      "Entry3" => { "fred" => "waldo" }
     }
 
     # WHEN
@@ -49,7 +49,7 @@ class CdkAssertionsSectionTest < Minitest::Test
     matcher = T.object_like({ "foo" => "bar" })
     section = {
       "Entry1" => { "foo" => "qux" },
-      "Entry3" => { "fred" => "waldo" },
+      "Entry3" => { "fred" => "waldo" }
     }
 
     # WHEN

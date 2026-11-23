@@ -127,13 +127,15 @@ module RubyCdk
           return [ magnitude.to_s, 0 ] unless match
 
           whole, fraction, power = match.captures
-          digits = "#{whole}#{fraction}".sub(/0+\z/, "")
-          exponent = if power
-            power.to_i
+          if power
+            digits = "#{whole}#{fraction}".sub(/0+\z/, "")
+            exponent = power.to_i
           elsif whole == "0"
-            -(fraction.index(/[1-9]/) + 1)
+            digits = fraction.sub(/\A0+/, "")
+            exponent = digits.length - fraction.length - 1
           else
-            whole.length - 1
+            digits = "#{whole}#{fraction}".sub(/0+\z/, "")
+            exponent = whole.length - 1
           end
           [ digits, exponent ]
         end
@@ -175,8 +177,12 @@ module RubyCdk
             (value % 1).zero? && value.abs < 1e21 ? value.to_i : value
           when UNDEFINED, Proc, Method, Symbol
             NO_JSON
-          else
+          when Numeric, String, TrueClass, FalseClass, NilClass
             value
+          else
+            # Any other object is a JSON object with the keys JavaScript would list:
+            # those of its to_h, or none.
+            value.respond_to?(:to_h) ? native(value.to_h) : {}
           end
         end
 
