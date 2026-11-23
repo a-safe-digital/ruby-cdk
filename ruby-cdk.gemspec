@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
   spec.homepage = "https://github.com/a-safe-digital/ruby-cdk"
   spec.license = "MIT"
   spec.metadata = {
-    "homepage_uri" => spec.homepage,
+    # The homepage is above; repeating it here would only make rubygems.org choose between two.
     "source_code_uri" => spec.homepage,
     "changelog_uri" => "#{spec.homepage}/blob/main/CHANGELOG.md",
     "bug_tracker_uri" => "#{spec.homepage}/issues",
