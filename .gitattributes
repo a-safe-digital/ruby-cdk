@@ -1,0 +1,11 @@
+# Every text file is checked out with LF endings, on every platform: the hash of a
+# file asset must not depend on who synthesized it.
+* text=auto eol=lf
+
+# Binaries
+*.gem binary
+*.gz binary
+*.zip binary
+*.png binary
+*.jpg binary
+*.ico binary
