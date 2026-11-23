@@ -1,48 +1,36 @@
 {
  "Resources": {
-  "SourceQueue1F4BBA4BB": {
-   "Type": "AWS::SQS::Queue",
+  "ExampleResourceWaitConditionHandle9C53A8D3": {
+   "Type": "AWS::CloudFormation::WaitConditionHandle"
+  },
+  "ExampleResourceAC53F4AE": {
+   "Type": "AWS::CloudFormation::WaitCondition",
    "Properties": {
-    "RedriveAllowPolicy": {
-      "redrivePermission": "allowAll"
-    }
+    "Count": 0,
+    "Handle": {
+     "Ref": "ExampleResourceWaitConditionHandle9C53A8D3"
+    },
+    "Timeout": "10"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
-  "SourceQueue22481CB5A": {
-   "Type": "AWS::SQS::Queue",
+  "ExampleResourceRole0533653E": {
+   "Type": "AWS::IAM::Role",
    "Properties": {
-    "RedriveAllowPolicy": {
-      "redrivePermission": "denyAll"
-    }
-   },
-   "UpdateReplacePolicy": "Delete",
-   "DeletionPolicy": "Delete"
-  },
-  "DeadLetterQueue9F481546": {
-   "Type": "AWS::SQS::Queue",
-   "Properties": {
-    "RedriveAllowPolicy": {
-     "redrivePermission": "byQueue",
-     "sourceQueueArns": [
+    "AssumeRolePolicyDocument": {
+     "Statement": [
       {
-       "Fn::GetAtt": [
-        "SourceQueue1F4BBA4BB",
-        "Arn"
-       ]
-      },
-      {
-       "Fn::GetAtt": [
-        "SourceQueue22481CB5A",
-        "Arn"
-       ]
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "cloudformation.amazonaws.com"
+       }
       }
-     ]
+     ],
+     "Version": "2012-10-17"
     }
-   },
-   "UpdateReplacePolicy": "Delete",
-   "DeletionPolicy": "Delete"
+   }
   }
  },
  "Parameters": {

@@ -24,8 +24,13 @@ module Tools
     SUFFIX = ".template.json"
     # How many templates the committed sample holds.
     DEFAULT_COUNT = 400
-    # A service with this many templates in the corpus is always in the sample.
+    # The rule of the sample: a service with this many templates in the corpus has a seat. Every
+    # other service has one too: that is the exception, which META.json states with the rule.
     MIN_STRATUM = 5
+    ONE_SEAT_PER_SERVICE_REASON = "The rule gives a seat to every service with #{MIN_STRATUM} templates or more and shares " \
+      "the rest of the count in proportion to size; by exception every smaller service has a seat too, so that a resource " \
+      "type the validator gets wrong in a small service is seen by the committed sample and not only by the weekly run of " \
+      "the whole corpus."
     # How many templates without a Resources key the default sample holds at most, and why.
     WITHOUT_RESOURCES_CAP = 50
     WITHOUT_RESOURCES_CAP_REASON = "A stack without Resources is valid CloudFormation and the validator must accept it, " \
@@ -118,15 +123,14 @@ module Tools
       end
 
       # The sample of a corpus, as [path, service] pairs in path order: deterministic, and
-      # stratified by service. Every service that has MIN_STRATUM templates is represented, and
-      # the rest of the count goes proportionally. Within a service the templates with the
-      # smallest sample_key are taken, so nothing is reshuffled when the corpus grows.
+      # stratified by service. Every service is represented, one seat each, and the rest of the
+      # count goes proportionally. Within a service the templates with the smallest sample_key are
+      # taken, so nothing is reshuffled when the corpus grows.
       #
       # without_resources names the templates that have no Resources key; the sample then holds at
-      # most at_most of them. One too many gives way, those with the largest key first, to the
-      # next template of its service that has Resources; it is left out when its service has
-      # none left, and no service loses a seat to another. A corpus that fits in the count is
-      # the sample, uncapped.
+      # most at_most of them. Beyond it, one gives way to the next template of its service that has
+      # Resources, and no service loses a seat to another. Only when no service has any left to
+      # give are the others left out. A corpus that fits in the count is the sample, uncapped.
       def select_sample(templates, count: DEFAULT_COUNT, without_resources: nil, at_most: 0)
         paths = templates.map(&:to_s).uniq.sort
         return paths.map { |path| [ path, service_of(path) ] } if paths.size <= count
@@ -179,15 +183,19 @@ module Tools
 
       # Writes the sample of the corpus under destination/templates/<service>/, and what is known
       # of the corpus in destination/META.json. A file is written only when its bytes differ from
-      # what is there; nothing else under destination is touched.
+      # what is there.
       #
-      # templates is what templates_in answers. The sample holds at most WITHOUT_RESOURCES_CAP of
-      # the templates without a Resources key, in proportion to the count, and META.json says so
-      # next to how many it holds.
+      # templates/ belongs to the sample: what an earlier sample left there and this one does not
+      # hold is removed once the new one is written. Nothing else under destination is touched.
+      #
+      # templates is what templates_in answers. Where there is a choice to make, the sample gives
+      # every service of the corpus a template and holds at most WITHOUT_RESOURCES_CAP of those
+      # without a Resources key, in proportion to the count; META.json states both, next to what
+      # the sample holds.
       #
       # Answers the META.json content as :meta, how many template files were :written, :rewritten
       # and :unchanged, whether META.json itself was written (:meta_written), and the files of an
-      # earlier sample that are no longer selected (:stale).
+      # earlier sample that were :removed.
       def write_sample(destination:, templates:, commit:, date:, count: DEFAULT_COUNT)
         # A file that does not parse is no template: it is counted, and left out of the sample.
         parsed = templates.to_h { |path, file| [ path, parse(file) ] }
@@ -195,9 +203,15 @@ module Tools
         files = templates.slice(*loadable.keys)
         bare = loadable.reject { |_, template| template.key?("Resources") }.keys
         at_most = count * WITHOUT_RESOURCES_CAP / DEFAULT_COUNT
-        # The cap is in force where there is a choice to make; a corpus that fits is all taken.
-        capped = files.size > count
+        # The rules of the sample are in force where there is a choice to make; a corpus that fits
+        # in the count is all taken.
+        in_force = files.size > count
         sample = select_sample(files.keys, count:, without_resources: bare, at_most:)
+        if sample.empty?
+          # Not a sample that moved but a corpus that could not be read. Replacing the committed
+          # sample, or emptying its directory, is not something to do quietly.
+          raise ArgumentError, "corpus: the sample would hold no template, so nothing was written or removed"
+        end
 
         names = sample.map { |path, service| "#{service}/#{sample_name(path)}" }
         unless names.map(&:downcase).uniq.size == names.size
@@ -213,8 +227,11 @@ module Tools
 
         taken = sample.map(&:first)
         about_sample = describe(taken, files, parsed, resource_types_in(taken, parsed))
-        if capped
-          about_sample.merge!("without_resources_cap" => at_most, "without_resources_cap_reason" => WITHOUT_RESOURCES_CAP_REASON)
+        if in_force
+          about_sample.merge!(
+            "one_seat_per_service" => true, "one_seat_per_service_reason" => ONE_SEAT_PER_SERVICE_REASON,
+            "without_resources_cap" => at_most, "without_resources_cap_reason" => WITHOUT_RESOURCES_CAP_REASON
+          )
         end
         meta = {
           "commit" => commit,
@@ -232,7 +249,7 @@ module Tools
           meta:,
           files: { written: outcomes[:written], rewritten: outcomes[:rewritten], unchanged: outcomes[:unchanged] },
           meta_written:,
-          stale: template_files_in(directory) - names
+          removed: prune_sample(directory, names)
         }
       end
 
@@ -280,13 +297,16 @@ module Tools
 
       ## The sample
 
-      # How many templates each service contributes, one entry per service: one to every service
-      # that has MIN_STRATUM templates (the largest first when the count cannot hold them all),
-      # and the rest in proportion to size. The proportional seats are shared by the largest
-      # remainder method, in integers, so that no rounding can move one.
+      # How many templates each service contributes, one entry per service. By the rule, one to
+      # every service that has MIN_STRATUM templates; by the exception that META.json states, one
+      # to every other service as well. When the count cannot hold them all, the rule's services
+      # keep theirs first, and among either the larger ones first. The rest of the count goes in
+      # proportion to size, shared by the largest remainder method, in integers, so that no
+      # rounding can move one.
       def seats_for(services, count)
-        represented = services.sort_by { |service, members| [ -members.size, service ] }
-          .select { |_, members| members.size >= MIN_STRATUM }.map(&:first).first(count)
+        by_size = ->(service) { [ -services.fetch(service).size, service ] }
+        by_the_rule = services.keys.select { |service| services.fetch(service).size >= MIN_STRATUM }.sort_by(&by_size)
+        represented = (by_the_rule + (services.keys - by_the_rule).sort_by(&by_size)).first(count)
         seats = services.to_h { |service, _| [ service, 0 ] }
         represented.each { |service| seats[service] = 1 }
         spare = count - represented.size
@@ -304,21 +324,36 @@ module Tools
         seats.merge(shares.transform_values(&:first)) { |_, at_least_one, share| at_least_one + share }
       end
 
-      # The taken templates with at most at_most of those in without_resources. The ones beyond
-      # it, with the largest key first, give way to the next template of their service that is
-      # neither; one is left out when its service has none to give.
+      # The taken templates with at most at_most of those in without_resources. Beyond it, a
+      # template without Resources gives way to the next template of its service that has them,
+      # the one with the largest key first. A template whose service has none to give keeps its
+      # seat while any other can still give way: that seat is its service's only one. Only when
+      # none can is it left out, the largest key first.
       def capped(taken, ordered, without_resources, at_most)
         return taken unless without_resources
 
         few = without_resources.to_h { |path| [ path, true ] }
         by_path = taken.to_h { |path, service| [ path, service ] }
         over = by_path.count { |path, _| few[path] } - at_most
-        return taken unless over.positive?
+        # Largest key first, so that what stays is a function of the keys alone.
+        without = by_path.keys.select { |path| few[path] }.sort_by { |path| [ sample_key(path), path ] }.reverse
 
-        by_path.keys.select { |path| few[path] }.sort_by { |path| [ sample_key(path), path ] }.last(over).each do |path|
-          service = by_path.delete(path)
+        without.each do |path|
+          break unless over.positive?
+
+          service = by_path.fetch(path)
           replacement = ordered.fetch(service).find { |candidate| !few[candidate] && !by_path.key?(candidate) }
-          by_path[replacement] = service if replacement
+          next unless replacement
+
+          by_path.delete(path)
+          by_path[replacement] = service
+          over -= 1
+        end
+        without.each do |path|
+          break unless over.positive?
+          next unless by_path.delete(path)
+
+          over -= 1
         end
         by_path.map { |path, service| [ path, service ] }
       end
@@ -329,6 +364,29 @@ module Tools
       # that ends like a template is not read through.
       def template_files_in(root)
         Dir.glob("**/#{PATTERN}", base: root).sort.select { |path| File.lstat(File.join(root, path)).file? }
+      end
+
+      # Removes what an earlier sample left under directory and the new one, keep, does not hold.
+      # Only a file the sample could have written goes, and answers are its paths under
+      # directory; see sample_file?. Nothing else under directory is touched.
+      def prune_sample(directory, keep)
+        return [] unless File.directory?(directory)
+
+        Dir.glob("*/*#{SUFFIX}", base: directory).sort.filter_map do |path|
+          file = File.join(directory, path)
+          next if keep.include?(path) || !sample_file?(path) || !File.lstat(file).file?
+
+          File.delete(file)
+          path
+        end
+      end
+
+      # Whether a path under templates/ is one the sample could have written: directly inside a
+      # service directory, and named as sample_name names a template. Such a name is a path with
+      # its slashes doubled, which shows in its "__"; a file someone named by hand, a README, a
+      # file deeper down, a directory or a link is not the sample's.
+      def sample_file?(path)
+        path.split("/").size == 2 && File.basename(path).end_with?(SUFFIX) && File.basename(path).include?("__")
       end
 
       # The parsed template, or nil when the file is not a JSON object.
