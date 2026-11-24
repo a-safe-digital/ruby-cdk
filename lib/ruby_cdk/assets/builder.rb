@@ -20,7 +20,7 @@ module RubyCdk
       def initialize(stack, source_path, exclude: [])
         @stack = stack
         @source_path = source_path
-        @exclude = Array(exclude).dup.freeze
+        @exclude = Array(exclude).map(&:dup).freeze
         @record = nil
       end
 
@@ -40,25 +40,40 @@ module RubyCdk
       # Not named hash: Object#hash must answer an Integer, and an asset whose
       # hash is a String could not be a Hash key or sit in a Set.
       def asset_hash
-        Lazy.new { record.manifest_hash }
+        Lazy.new { |resolving| ours?(resolving); record.manifest_hash }
       end
 
       # "<manifest hash>.zip"
       def key
-        Lazy.new { record.key }
+        Lazy.new { |resolving| ours?(resolving); record.key }
       end
 
       # The asset bucket of the stack's environment.
       def bucket
-        Lazy.new { bucket_name }
+        Lazy.new { |resolving| ours?(resolving); bucket_name }
       end
 
       # For a Lambda `code`: {"S3Bucket" => ..., "S3Key" => ...}.
       def s3_location
-        Lazy.new { { "S3Bucket" => bucket_name, "S3Key" => record.key } }
+        Lazy.new { |resolving| ours?(resolving); { "S3Bucket" => bucket_name, "S3Key" => record.key } }
       end
 
       private
+
+      # An asset belongs to the stack that declared it, and its bucket and its
+      # key are only published with that stack. Used in another stack's
+      # template, it would name an object nothing has uploaded and no manifest
+      # entry would list, so it is refused at resolve time. The CDK refuses the
+      # same thing when a Code is bound to a second stack ("Asset is already
+      # associated with another stack"; aws-lambda/lib/code.ts). Declare the
+      # asset again, with the other stack's own `asset.zip`.
+      def ours?(resolving)
+        return if resolving.nil? || resolving.equal?(@stack)
+
+        raise UsageError, "The asset at #{File.expand_path(@source_path.to_s)} was declared in stack #{@stack.stack_name}, " \
+          "and is being resolved for stack #{resolving.stack_name}. An asset uploads with, and is listed by, the stack " \
+          "that declared it. Declare it again in #{resolving.stack_name}: #{resolving.path}.asset.zip(...)"
+      end
 
       def bucket_name
         Assets.bucket_name(@stack.env.account, @stack.env.region)

@@ -27,16 +27,26 @@ module RubyCdk
     # records are the ones synthesis built.
     #
     # store is the object-store port. owner is the account that must own the
-    # bucket. A stack with no asset uploads nothing and checks nothing, which
-    # is what lets it deploy into an account that was never bootstrapped.
+    # bucket: the resolved identity's, and it has to be the stack's env account,
+    # because the bucket's name is made of that account and every check and
+    # message names it. A stack with no asset uploads nothing and checks
+    # nothing, which is what lets it deploy into an account that was never
+    # bootstrapped.
     #
     # Answers { uploaded:, skipped: }. Raises what Uploader raises: a bucket
     # that is not ours stops the deploy before anything is looked up.
     def self.publish(stack, store:, owner:)
+      account = stack.env.account.to_s
+      unless owner.to_s == account
+        raise ArgumentError, "publish was given owner #{owner.inspect}, but the bucket is named for the stack's " \
+          "env account #{account.inspect}. Pass the resolved identity's account, and deploy a stack with an env " \
+          "only with credentials of that account."
+      end
+
       records = stack.asset.records
       return { uploaded: 0, skipped: 0 } if records.empty?
 
-      Uploader.new(store:, owner:).upload_all(records, bucket: bucket_name(stack.env.account, stack.env.region))
+      Uploader.new(store:, owner: account).upload_all(records, bucket: bucket_name(account, stack.env.region))
     end
   end
 
