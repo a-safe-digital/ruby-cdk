@@ -6,6 +6,11 @@ require "support/core_helpers"
 
 # The resolve phase and the value model of architecture §4: what a Ruby value
 # becomes in the template, and what is refused.
+#
+# Every fixture is schema-valid, so that the V0 issues these tests pin are the
+# only issues a synthesis reports: invalid values sit on real properties of the
+# right kind, values that exist only to reach the template sit in a resource's
+# metadata or in a json property, which are verbatim zones.
 class SynthResolverTest < CoreHelpers::TestCase
   # Answers what a zipped asset answers. The class itself belongs to a component that loads later.
   ZippedAsset = Struct.new(:hash, :key) do
@@ -26,7 +31,7 @@ class SynthResolverTest < CoreHelpers::TestCase
       mapping("Regions", "eu" => { "west" => "eu-west-1" })
       is_prod = condition("IsProd", Fn.equals(Fn.ref("Stage"), "prod"))
       first = resource("First", "AWS::SNS::Topic")
-      resource("Second", "AWS::SQS::Queue", depends_on: [ first, "Stage" ])
+      resource("Second", "AWS::SQS::Queue", depends_on: [ first ])
       export("TableName", value: "t", description: "Exported")
       output("Plain", value: 1)
       output("OnlyInProd", value: 2, condition: is_prod)
@@ -44,7 +49,7 @@ class SynthResolverTest < CoreHelpers::TestCase
     }, template["Parameters"])
     assert_equal({ "Regions" => { "eu" => { "west" => "eu-west-1" } } }, template["Mappings"])
     assert_equal({ "IsProd" => { "Fn::Equals" => [ { "Ref" => "Stage" }, "prod" ] } }, template["Conditions"])
-    assert_equal({ "First" => { "Type" => "AWS::SNS::Topic" }, "Second" => { "Type" => "AWS::SQS::Queue", "DependsOn" => %w[ First Stage ] } },
+    assert_equal({ "First" => { "Type" => "AWS::SNS::Topic" }, "Second" => { "Type" => "AWS::SQS::Queue", "DependsOn" => %w[ First ] } },
       template["Resources"])
     assert_equal({
       "TableName" => { "Value" => "t", "Description" => "Exported", "Export" => { "Name" => "blog-TableName" } },
@@ -84,8 +89,10 @@ class SynthResolverTest < CoreHelpers::TestCase
   def test_a_value_that_needs_the_language_extensions_adds_its_transform_after_the_declared_ones
     stack = build_stack do
       transform("AWS::Serverless-2016-10-31")
+      resource("Topic", "AWS::SNS::Topic")
       resource("Fn", "AWS::Lambda::Function",
-        "Json" => Fn.to_json_string("key" => Fn.ref("A")), "Count" => Fn.len(Fn.split(",", Fn.import_value("X"))))
+        "Code" => { "ZipFile" => "x" }, Role: "arn:aws:iam::111122223333:role/r",
+        Description: Fn.to_json_string("key" => Fn.ref("Topic")), Timeout: Fn.len(Fn.split(",", Fn.import_value("X"))))
     end
 
     template = stack.to_template
@@ -97,7 +104,7 @@ class SynthResolverTest < CoreHelpers::TestCase
   def test_a_find_in_map_with_a_default_value_needs_no_transform
     stack = build_stack do
       mapping("RegionMap", "eu" => { "size" => "small" })
-      resource("A", "AWS::SNS::Topic", "Size" => Fn.find_in_map("RegionMap", "eu", "size", default_value: "medium"))
+      resource("A", "AWS::SNS::Topic", DisplayName: Fn.find_in_map("RegionMap", "eu", "size", default_value: "medium"))
     end
 
     template = stack.to_template
@@ -105,7 +112,7 @@ class SynthResolverTest < CoreHelpers::TestCase
     assert_nil template["Transform"]
     assert_empty stack.transforms
     assert_equal({ "Fn::FindInMap" => [ "RegionMap", "eu", "size", { "DefaultValue" => "medium" } ] },
-      template["Resources"]["A"]["Properties"]["Size"])
+      template["Resources"]["A"]["Properties"]["DisplayName"])
   end
 
   def test_an_output_whose_lazy_resolves_to_nil_is_an_issue
@@ -117,29 +124,33 @@ class SynthResolverTest < CoreHelpers::TestCase
     assert_match(/Outputs\.A\.Value: the output has no value/, error.message)
   end
 
+  # A Queue carries every kind the value model writes: QueueName a string,
+  # DelaySeconds an integer, ContentBasedDeduplication a boolean, and
+  # RedrivePolicy a json property, whose content is a verbatim zone.
   def test_a_string_an_integer_a_float_and_a_boolean_are_written_as_they_are
-    properties = properties_of(Name: "s", Count: 1, Ratio: 1.5, On: true, Off: false)
+    properties = properties_of(QueueName: "s", DelaySeconds: 1, ContentBasedDeduplication: true, RedrivePolicy: { "Ratio" => 1.5 })
 
-    assert_equal({ "Name" => "s", "Count" => 1, "Ratio" => 1.5, "On" => true, "Off" => false }, properties)
+    assert_equal({ "QueueName" => "s", "DelaySeconds" => 1, "ContentBasedDeduplication" => true, "RedrivePolicy" => { "Ratio" => 1.5 } },
+      properties)
   end
 
   def test_a_symbol_becomes_its_name
-    properties = properties_of(Mode: :Active, List: [ :a, :b ])
+    properties = properties_of(QueueName: :Active, RedrivePolicy: { "List" => [ :a, :b ] })
 
-    assert_equal({ "Mode" => "Active", "List" => [ "a", "b" ] }, properties)
-    assert_predicate properties["Mode"], :frozen?
+    assert_equal({ "QueueName" => "Active", "RedrivePolicy" => { "List" => [ "a", "b" ] } }, properties)
+    assert_predicate properties["QueueName"], :frozen?
   end
 
   def test_a_nil_leaves_its_key_out
     template = build_stack {
       resource("A", "AWS::SNS::Topic", TopicName: "a", DisplayName: nil)
       resource("B", "AWS::SNS::Topic", DisplayName: nil)
-      resource("C", "AWS::SNS::Topic", DisplayName: Lazy.new { nil }, Fifo: false)
+      resource("C", "AWS::SNS::Topic", DisplayName: Lazy.new { nil }, FifoTopic: false)
     }.to_template
 
     assert_equal({ "Type" => "AWS::SNS::Topic", "Properties" => { "TopicName" => "a" } }, template["Resources"]["A"])
     assert_equal({ "Type" => "AWS::SNS::Topic" }, template["Resources"]["B"])
-    assert_equal({ "Type" => "AWS::SNS::Topic", "Properties" => { "Fifo" => false } }, template["Resources"]["C"])
+    assert_equal({ "Type" => "AWS::SNS::Topic", "Properties" => { "FifoTopic" => false } }, template["Resources"]["C"])
   end
 
   def test_a_default_that_resolves_to_nil_leaves_its_key_out_too
@@ -162,15 +173,18 @@ class SynthResolverTest < CoreHelpers::TestCase
       @topic = resource("Topic", "AWS::SNS::Topic")
       parameter("Stage", type: "String")
       @stage = parameters["Stage"]
-      resource("Queue", "AWS::SQS::Queue", "TopicName" => Fn.ref(@topic), "Arn" => Fn.get_att(@topic, "Arn"), "Stage" => Fn.ref(@stage),
-        "Name" => Fn.join("-", [ Fn.ref(@stage), "q" ]), "NoValue" => Fn::NO_VALUE)
+      resource("Queue", "AWS::SQS::Queue", QueueName: Fn.ref(@topic), DelaySeconds: Fn.get_att(@topic, "TopicArn"),
+        VisibilityTimeout: Fn.ref(@stage), MaximumMessageSize: Fn.join("-", [ Fn.ref(@stage), "q" ]),
+        ContentBasedDeduplication: Fn::NO_VALUE)
     end
     topic = stack.instance_variable_get(:@topic)
 
     assert_equal "Topic", topic.logical_id
     assert_equal(
-      { "TopicName" => { "Ref" => "Topic" }, "Arn" => { "Fn::GetAtt" => [ "Topic", "Arn" ] }, "Stage" => { "Ref" => "Stage" },
-        "Name" => { "Fn::Join" => [ "-", [ { "Ref" => "Stage" }, "q" ] ] }, "NoValue" => { "Ref" => "AWS::NoValue" } },
+      { "QueueName" => { "Ref" => "Topic" }, "DelaySeconds" => { "Fn::GetAtt" => [ "Topic", "TopicArn" ] },
+        "VisibilityTimeout" => { "Ref" => "Stage" },
+        "MaximumMessageSize" => { "Fn::Join" => [ "-", [ { "Ref" => "Stage" }, "q" ] ] },
+        "ContentBasedDeduplication" => { "Ref" => "AWS::NoValue" } },
       stack.to_template["Resources"]["Queue"]["Properties"]
     )
   end
@@ -213,25 +227,26 @@ class SynthResolverTest < CoreHelpers::TestCase
   def test_a_lazy_that_leads_back_to_itself_is_reported_at_its_place_in_the_template
     cyclic = nil
     cyclic = Lazy.new { cyclic }
-    stack = build_stack { resource("A", "AWS::SNS::Topic", "Tags" => [ { "Value" => cyclic } ]) }
+    stack = build_stack { resource("A", "AWS::SNS::Topic", "DataProtectionPolicy" => { "Value" => cyclic }) }
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
 
-    assert_equal "Resources.A.Properties.Tags[0].Value", error.issues.first.path
+    assert_equal "Resources.A.Properties.DataProtectionPolicy.Value", error.issues.first.path
     assert_match(/leads back to itself/, error.message)
   end
 
   def test_a_lazy_that_raises_a_ruby_cdk_error_is_an_issue_like_any_other
     stack = build_stack do
-      resource("Fn", "AWS::Lambda::Function", "Code" => Lazy.new { raise RubyCdk::UsageError, "the directory lambda/blog does not exist" })
+      resource("Fn", "AWS::Lambda::Function", "Code" => { "ZipFile" => "x" }, Role: "arn",
+        Description: Lazy.new { raise RubyCdk::UsageError, "the directory lambda/blog does not exist" })
       resource("Other", "AWS::SQS::Queue", QueueName: Object.new)
     end
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
 
     assert_equal [ "V0", "V0" ], error.issues.map(&:rule)
-    assert_equal [ "Resources.Fn.Properties.Code", "Resources.Other.Properties.QueueName" ], error.issues.map(&:path)
-    assert_equal "V0 Resources.Fn.Properties.Code: the directory lambda/blog does not exist (a Lazy at this place could not be evaluated)",
+    assert_equal [ "Resources.Fn.Properties.Description", "Resources.Other.Properties.QueueName" ], error.issues.map(&:path)
+    assert_equal "V0 Resources.Fn.Properties.Description: the directory lambda/blog does not exist (a Lazy at this place could not be evaluated)",
       error.message.lines.first.chomp
   end
 
@@ -246,32 +261,34 @@ class SynthResolverTest < CoreHelpers::TestCase
 
   def test_nothing_the_user_wrote_is_changed
     nested = { "Key" => [ "a", :b ] }
-    properties = { "First" => nested, "Second" => nil, "Third" => "x" }
-    before = Marshal.load(Marshal.dump(properties))
+    policy = { "First" => nested, "Second" => nil, "Third" => "x" }
+    before = Marshal.load(Marshal.dump(policy))
+    list = [ 1, 2 ]
     stack = build_stack do
-      resource("A", "AWS::SNS::Topic", properties: properties)
-      resource("B", "AWS::SNS::Topic", "List" => [ 1, 2 ])
+      resource("A", "AWS::SNS::Topic", DataProtectionPolicy: policy)
+      resource("B", "AWS::SQS::Queue", "RedrivePolicy" => { "List" => list })
     end
 
     template = stack.to_template
 
-    assert_equal before, properties
-    assert_equal [ 1, 2 ], stack.resources.last.properties["List"]
-    refute_same nested, template["Resources"]["A"]["Properties"]["First"]
+    assert_equal before, policy
+    assert_equal [ 1, 2 ], stack.resources.last.properties["RedrivePolicy"]["List"]
+    refute_same nested, template["Resources"]["A"]["Properties"]["DataProtectionPolicy"]["First"]
     refute_same stack.resources.first.properties, template["Resources"]["A"]["Properties"]
 
     nested.freeze
-    properties.freeze
-    stack.resources.last.properties["List"].freeze
+    policy.freeze
+    list.freeze
     assert_equal template, stack.to_template
   end
 
   def test_arrays_and_hashes_are_written_recursively_in_the_order_they_were_written
-    properties = properties_of("Zed" => 1, Alpha: { "Inner" => [ { "Deep" => :value } ], :sym => "s" }, Last: [ [], {} ])
+    properties = properties_of(RedrivePolicy: { "Zed" => 1, "Alpha" => { "Inner" => [ { "Deep" => :value } ], :sym => "s" }, "Last" => [ [], {} ] })
 
-    assert_equal({ "Zed" => 1, "Alpha" => { "Inner" => [ { "Deep" => "value" } ], "sym" => "s" }, "Last" => [ [], {} ] }, properties)
-    assert_equal [ "Zed", "Alpha", "Last" ], properties.keys
-    assert_equal [ "Inner", "sym" ], properties["Alpha"].keys
+    assert_equal({ "Zed" => 1, "Alpha" => { "Inner" => [ { "Deep" => "value" } ], "sym" => "s" }, "Last" => [ [], {} ] },
+      properties["RedrivePolicy"])
+    assert_equal [ "Zed", "Alpha", "Last" ], properties["RedrivePolicy"].keys
+    assert_equal [ "Inner", "sym" ], properties["RedrivePolicy"]["Alpha"].keys
   end
 
   def test_a_resource_where_a_value_is_expected_is_an_error_that_names_fn_ref
@@ -289,11 +306,13 @@ class SynthResolverTest < CoreHelpers::TestCase
   end
 
   def test_a_zipped_asset_where_a_value_is_expected_is_an_error_that_names_its_three_methods
-    stack = build_stack { resource("Fn", "AWS::Lambda::Function", "Code" => ZippedAsset.new("abc", "abc.zip")) }
+    stack = build_stack do
+      resource("Fn", "AWS::Lambda::Function", "Code" => { "ZipFile" => "x" }, Role: "arn", Description: ZippedAsset.new("abc", "abc.zip"))
+    end
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
 
-    assert_equal "Resources.Fn.Properties.Code", error.issues.first.path
+    assert_equal "Resources.Fn.Properties.Description", error.issues.first.path
     assert_includes error.message, "a zipped asset is not a value: use `.s3_location`, `.bucket` or `.key`"
   end
 
@@ -321,60 +340,66 @@ class SynthResolverTest < CoreHelpers::TestCase
     assert_match(/RubyCdk::Lazy\.new \{ \.\.\. \}/, error.issues.first.hint)
   end
 
+  # Four string properties of one Topic, so that the four rejected values are
+  # the only issues: a placeholder stands in each, and a placeholder is a
+  # string, which is what these properties take.
   def test_anything_else_is_an_error_that_names_the_class
     stack = build_stack do
       parameter("N", type: "Number")
-      resource("A", "AWS::SNS::Topic", DisplayName: Object.new, "Owner" => self, "Count" => 2r, "Stage" => parameters["N"])
+      resource("A", "AWS::SNS::Topic", DisplayName: Object.new, TopicName: self, KmsMasterKeyId: 2r, SignatureVersion: parameters["N"])
     end
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
 
     assert_equal [
-      "Resources.A.Properties.DisplayName", "Resources.A.Properties.Owner", "Resources.A.Properties.Count", "Resources.A.Properties.Stage"
+      "Resources.A.Properties.DisplayName", "Resources.A.Properties.TopicName", "Resources.A.Properties.KmsMasterKeyId",
+      "Resources.A.Properties.SignatureVersion"
     ], error.issues.map(&:path)
     assert_match(/Resources\.A\.Properties\.DisplayName: an Object is not a value/, error.message)
     assert_match(/App\/blog is a construct, and a construct is not a value/, error.message)
-    assert_match(/Resources\.A\.Properties\.Count: a Rational is not a value/, error.message)
+    assert_match(/Resources\.A\.Properties\.KmsMasterKeyId: a Rational is not a value/, error.message)
     assert_match(/the parameter N of the stack is not a value/, error.message)
   end
 
   def test_nil_inside_an_array_and_a_key_that_is_not_a_string_are_errors
     stack = build_stack do
       @topic = resource("Topic", "AWS::SNS::Topic")
-      resource("A", "AWS::SNS::Topic", "List" => [ "a", nil ], "Map" => { 1 => "one" }, "Other" => { @topic => "x" })
+      resource("A", "AWS::SNS::Topic", "DataProtectionPolicy" => { "List" => [ "a", nil ], "Map" => { 1 => "one" }, "Other" => { @topic => "x" } })
     end
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
 
-    assert_equal [ "Resources.A.Properties.List[1]", "Resources.A.Properties.Map", "Resources.A.Properties.Other" ], error.issues.map(&:path)
-    assert_match(/Resources\.A\.Properties\.List\[1\]: nil is not a value inside an array/, error.message)
-    assert_match(/Resources\.A\.Properties\.Map: a Hash key must be a String or a Symbol, got 1/, error.message)
+    assert_equal [
+      "Resources.A.Properties.DataProtectionPolicy.List[1]", "Resources.A.Properties.DataProtectionPolicy.Map", "Resources.A.Properties.DataProtectionPolicy.Other"
+    ], error.issues.map(&:path)
+    assert_match(/Resources\.A\.Properties\.DataProtectionPolicy\.List\[1\]: nil is not a value inside an array/, error.message)
+    assert_match(/Resources\.A\.Properties\.DataProtectionPolicy\.Map: a Hash key must be a String or a Symbol, got 1/, error.message)
     assert_match(/a Hash key must be a String or a Symbol, got #<RubyCdk::Cfn::Resource App\/blog\/Topic>/, error.message)
   end
 
   def test_infinity_and_nan_are_not_values
-    stack = build_stack { resource("A", "AWS::SNS::Topic", Ratio: 1.0 / 0, Other: -1.0 / 0, More: Float::NAN) }
+    stack = build_stack { resource("A", "AWS::SNS::Topic", DisplayName: 1.0 / 0, TopicName: -1.0 / 0, KmsMasterKeyId: Float::NAN) }
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
 
     assert_equal 3, error.issues.length
-    assert_match(/Resources\.A\.Properties\.Ratio: Infinity and NaN are not values/, error.message)
+    assert_match(/Resources\.A\.Properties\.DisplayName: Infinity and NaN are not values/, error.message)
   end
 
   def test_every_problem_is_reported_at_once_under_one_rule
     stack = build_stack do
       @topic = resource("Topic", "AWS::SNS::Topic")
-      resource("A", "AWS::SNS::Topic", DisplayName: Time.now, "Owner" => @topic)
-      resource("B", "AWS::SQS::Queue", "Code" => ZippedAsset.new("abc", "abc.zip"), "Tags" => [ nil ])
-      resource("C", "AWS::SQS::Queue", "When" => proc { }, "Who" => Object.new)
+      resource("A", "AWS::SNS::Topic", DisplayName: Time.now, TopicName: @topic)
+      resource("B", "AWS::SQS::Queue", QueueName: ZippedAsset.new("abc", "abc.zip"), RedrivePolicy: { "V" => [ nil ] })
+      resource("C", "AWS::SQS::Queue", QueueName: proc { }, DeduplicationScope: Object.new)
     end
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
 
     assert_equal %w[ V0 ] * 6, error.issues.map(&:rule)
     assert_equal [
-      "Resources.A.Properties.DisplayName", "Resources.A.Properties.Owner", "Resources.B.Properties.Code",
-      "Resources.B.Properties.Tags[0]", "Resources.C.Properties.When", "Resources.C.Properties.Who"
+      "Resources.A.Properties.DisplayName", "Resources.A.Properties.TopicName", "Resources.B.Properties.QueueName",
+      "Resources.B.Properties.RedrivePolicy.V[0]", "Resources.C.Properties.QueueName", "Resources.C.Properties.DeduplicationScope"
     ], error.issues.map(&:path)
     assert_equal 6, error.message.lines.length
     assert_match(/\AV0 Resources\.A\.Properties\.DisplayName: /, error.message)
@@ -383,13 +408,14 @@ class SynthResolverTest < CoreHelpers::TestCase
   def test_the_template_holds_only_plain_values_afterwards
     stack = build_stack do
       @topic = resource("Topic", "AWS::SNS::Topic")
-      resource("A", "AWS::SQS::Queue", "Name" => Fn.join("", [ "a", Lazy.new { Fn.ref(@topic) }, "b" ]), "Key" => :symbol)
+      resource("A", "AWS::SQS::Queue", QueueName: Fn.join("", [ "a", Lazy.new { Fn.ref(@topic) }, "b" ]),
+        RedrivePolicy: { "Key" => :symbol })
     end
 
     template = stack.to_template
 
-    assert_equal({ "Type" => "AWS::SQS::Queue", "Properties" => { "Name" => { "Fn::Join" => [ "", [ "a", { "Ref" => "Topic" }, "b" ] ] }, "Key" => "symbol" } },
-      template["Resources"]["A"])
+    assert_equal({ "Type" => "AWS::SQS::Queue", "Properties" => { "QueueName" => { "Fn::Join" => [ "", [ "a", { "Ref" => "Topic" }, "b" ] ] },
+      "RedrivePolicy" => { "Key" => "symbol" } } }, template["Resources"]["A"])
     assert_equal template, JSON.parse(RubyCdk::Synth::Serializer.call(template))
   end
 
@@ -425,6 +451,6 @@ class SynthResolverTest < CoreHelpers::TestCase
   private
 
   def properties_of(**properties)
-    build_stack { resource("Thing", "AWS::SNS::Topic", properties: properties) }.to_template.fetch("Resources").fetch("Thing").fetch("Properties")
+    build_stack { resource("Thing", "AWS::SQS::Queue", properties: properties) }.to_template.fetch("Resources").fetch("Thing").fetch("Properties")
   end
 end

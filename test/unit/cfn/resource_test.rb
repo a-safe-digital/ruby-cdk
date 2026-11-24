@@ -54,11 +54,20 @@ class CfnResourceTest < CoreHelpers::TestCase
 
   def test_the_keys_are_kept_exactly_as_written_symbols_and_all
     stack = build_stack do
-      @resource = resource("A", "AWS::SQS::Queue", key_schema: [ { attribute_name: "pk" } ], "ExactName" => :value)
+      @resource = resource("A", "AWS::DynamoDB::Table", key_schema: [ { attribute_name: "pk", key_type: "HASH" } ],
+        attribute_definitions: [ { attribute_name: "pk", attribute_type: "S" } ], BillingMode: :PAY_PER_REQUEST)
     end
 
-    assert_equal({ key_schema: [ { attribute_name: "pk" } ], "ExactName" => :value }, stack.instance_variable_get(:@resource).properties)
-    assert_equal({ "key_schema" => [ { "attribute_name" => "pk" } ], "ExactName" => "value" }, stack.to_template["Resources"]["A"]["Properties"])
+    assert_equal({
+      key_schema: [ { attribute_name: "pk", key_type: "HASH" } ],
+      attribute_definitions: [ { attribute_name: "pk", attribute_type: "S" } ],
+      BillingMode: :PAY_PER_REQUEST
+    }, stack.instance_variable_get(:@resource).properties)
+    assert_equal({
+      "KeySchema" => [ { "AttributeName" => "pk", "KeyType" => "HASH" } ],
+      "AttributeDefinitions" => [ { "AttributeName" => "pk", "AttributeType" => "S" } ],
+      "BillingMode" => "PAY_PER_REQUEST"
+    }, stack.to_template["Resources"]["A"]["Properties"])
   end
 
   def test_the_type_must_be_a_name

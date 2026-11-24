@@ -30,7 +30,7 @@ class SynthManifestTest < CoreHelpers::TestCase
     end.new(app, "net", env: TEST_ENV)
     other = RubyCdk::Stack.new(app, "other")
     stack_class do
-      resource("Db", "AWS::RDS::DBInstance", "Vpc" => Fn.import_value(net.export_name("VpcId")))
+      resource("Db", "AWS::SQS::Queue", QueueName: Fn.import_value(net.export_name("VpcId")))
       add_dependency(other)
     end.new(app, "app")
     app
@@ -114,7 +114,7 @@ class SynthManifestTest < CoreHelpers::TestCase
       resource("Queue", "AWS::SQS::Queue", "QueueName" => Fn.import_value("producer-TableName"))
       resource("Other", "AWS::SQS::Queue", "QueueName" => Fn.import_value("someone-elses-export"))
       resource("Late", "AWS::SQS::Queue", "QueueName" => Fn.import_value(producer.export_name("NotExported")))
-      resource("List", "AWS::SQS::Queue", "Tags" => [ { "Value" => Fn.import_value(producer.export_name("TableName")) } ])
+      resource("List", "AWS::SQS::Queue", "Tags" => [ { "Key" => "import", "Value" => Fn.import_value(producer.export_name("TableName")) } ])
     end.new(app, "consumer")
 
     manifest = app.synth

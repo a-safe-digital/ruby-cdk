@@ -35,7 +35,7 @@ class SynthPipelineTest < CoreHelpers::TestCase
 
     assert_equal [ "prepare", "normalize:first", "normalize:second", "validate:rule-a", "validate:rule-b" ], @log
     assert_same stack, result.stack
-    assert_equal "UPCASE", result.template["Resources"]["Prepared"]["Properties"]["Key"]
+    assert_equal "UPCASE", result.template["Resources"]["Prepared"]["Properties"]["DisplayName"]
     assert_equal result.bytes, RubyCdk::Synth::Serializer.call(result.template)
     assert_empty result.issues
   end
@@ -54,13 +54,13 @@ class SynthPipelineTest < CoreHelpers::TestCase
   end
 
   def test_resolve_runs_before_normalize_so_a_normalizer_sees_only_plain_values
-    stack = build_stack { resource("A", "AWS::SNS::Topic", DisplayName: Lazy.new { "later" }, Fifo: :yes) }
+    stack = build_stack { resource("A", "AWS::SNS::Topic", TopicName: Lazy.new { "later" }, DisplayName: :yes) }
     seen = []
     add_normalizer(->(context) { seen << context.template["Resources"]["A"]["Properties"]; context.template })
 
     Synth.run(stack)
 
-    assert_equal [ { "DisplayName" => "later", "Fifo" => "yes" } ], seen
+    assert_equal [ { "TopicName" => "later", "DisplayName" => "yes" } ], seen
   end
 
   # --- normalizers
@@ -164,15 +164,15 @@ class SynthPipelineTest < CoreHelpers::TestCase
 
   def test_run_never_raises_and_synthesize_raises_once_with_every_issue
     stack = build_stack do
-      resource("Thing", "AWS::DynamoDB::Table", DisplayName: Object.new)
+      resource("Thing", "AWS::SNS::Topic", DisplayName: Object.new)
       output("Count", value: 1)
     end
-    normalizer = writes_bad_ids("Resources" => { "my_table" => { "Type" => "AWS::DynamoDB::Table" } })
+    normalizer = writes_bad_property("Resources", "Thing", "Nope", 1)
 
     result = Synth.run(stack)
 
-    assert_equal %w[ V0 V2 ], result.issues.map(&:rule)
-    assert_equal [ "Resources.Thing.Properties.DisplayName", "Resources.my_table" ], result.issues.map(&:path)
+    assert_equal %w[ V0 V3 ], result.issues.map(&:rule)
+    assert_equal [ "Resources.Thing.Properties.DisplayName", "Resources.Thing.Properties.Nope" ], result.issues.map(&:path)
     assert_kind_of Hash, result.template
     assert_kind_of String, result.bytes
 
@@ -181,7 +181,7 @@ class SynthPipelineTest < CoreHelpers::TestCase
     assert_equal 2, error.issues.length
 
     Synth.unregister_normalizer(normalizer)
-    clean = Synth.synthesize(build_stack { resource("Table", "AWS::DynamoDB::Table") })
+    clean = Synth.synthesize(build_stack { resource("Table", "AWS::SQS::Queue") })
 
     assert_empty clean.issues
     assert_equal [ "Table" ], clean.template["Resources"].keys
@@ -222,7 +222,9 @@ class SynthPipelineTest < CoreHelpers::TestCase
   def test_the_rules_of_this_component_are_registered_like_any_other_validator
     assert_includes Synth.validators.map(&:class), Synth::Rules::LogicalIds
     assert_includes Synth.validators.map(&:class), Synth::Rules::StackName
-    assert_empty Synth.normalizers
+    # The schema's normalizer, registered by the umbrella, runs before any of
+    # these tests' own.
+    assert_equal [ RubyCdk::Validation.normalizers.first ], Synth.normalizers
     # The umbrella registers the schema's version as a manifest fact, and the
     # hashes of a stack's assets as an entry fact.
     assert_equal [ Synth::Manifest::SCHEMA_VERSION_KEY ], Synth.manifest_fact_keys
@@ -238,7 +240,8 @@ class SynthPipelineTest < CoreHelpers::TestCase
     Synth.unregister_normalizer(normalizer)
     Synth.unregister_validator(validator)
 
-    assert_empty Synth.normalizers
+    refute_includes Synth.normalizers, normalizer
+    assert_includes Synth.normalizers, RubyCdk::Validation.normalizers.first
     refute_includes Synth.validators, validator
     assert_equal "x", build_stack { resource("A", "AWS::SNS::Topic", DisplayName: "x") }.to_template["Resources"]["A"]["Properties"]["DisplayName"]
   end
@@ -293,14 +296,14 @@ class SynthPipelineTest < CoreHelpers::TestCase
 
   private
 
-  # Registers a normalizer that writes additions, a Hash of section to
-  # section, into the template; teardown takes it out.
-  def writes_bad_ids(additions)
+  # Registers a normalizer that writes one property, a wrong one, into a
+  # resource of the template; teardown takes it out. This is how a value that
+  # no declaration can produce reaches the schema's rules.
+  def writes_bad_property(section, resource, key, value)
     normalizer = lambda { |context|
-      additions.each do |section, entries|
-        written = context.template[section] || {}
-        context.template[section] = entries.merge(written)
-      end
+      body = context.template[section][resource]
+      properties = body["Properties"] || {}
+      context.template[section][resource] = body.merge("Properties" => properties.merge(key => value))
       context.template
     }
     add_normalizer(normalizer)
@@ -316,7 +319,7 @@ class SynthPipelineTest < CoreHelpers::TestCase
       define_method(:build) { resource("Early", "AWS::SNS::Topic") }
       define_method(:prepare) do
         log << "prepare"
-        resource("Prepared", "AWS::SNS::Topic", Key: "upcase")
+        resource("Prepared", "AWS::SNS::Topic", DisplayName: "upcase")
       end
     end
     klass.new(build_app(env: TEST_ENV), "blog")
@@ -367,7 +370,8 @@ class SynthPipelineTest < CoreHelpers::TestCase
   def two_stack_app
     app = build_app(env: TEST_ENV, stack_name_prefix: "demo-")
     stack_class do
-      table = resource("Table", "AWS::DynamoDB::Table", TableName: unique_name("data"))
+      table = resource("Table", "AWS::DynamoDB::Table", TableName: unique_name("data"),
+        KeySchema: [ { "AttributeName" => "pk", "KeyType" => "HASH" } ])
       export("TableName", value: Fn.ref(table))
     end.new(app, "blog")
     stack_class do
