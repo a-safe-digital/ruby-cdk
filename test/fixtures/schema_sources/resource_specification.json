@@ -1,0 +1,393 @@
+{
+  "PropertyTypes": {
+    "Tag": {
+      "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-resource-tags.html",
+      "Properties": {
+        "Key": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-resource-tags.html#cfn-resource-tags-key",
+          "UpdateType": "Mutable",
+          "Required": true,
+          "PrimitiveType": "String"
+        },
+        "Value": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-resource-tags.html#cfn-resource-tags-value",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "String"
+        }
+      }
+    },
+    "AWS::Demo::Widget.Settings": {
+      "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-settings.html",
+      "Properties": {
+        "ApiKey": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-settings.html#cfn-demo-widget-settings-apikey",
+          "UpdateType": "Immutable",
+          "Required": true,
+          "PrimitiveType": "String"
+        },
+        "Retries": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-settings.html#cfn-demo-widget-settings-retries",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "Integer"
+        },
+        "Window": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-settings.html#cfn-demo-widget-settings-window",
+          "UpdateType": "Conditional",
+          "Required": false,
+          "Type": "Window"
+        }
+      }
+    },
+    "AWS::Demo::Widget.Window": {
+      "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-settings-window.html",
+      "Properties": {
+        "From": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-settings-window.html#cfn-demo-widget-settings-window-from",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "String"
+        },
+        "To": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-settings-window.html#cfn-demo-widget-settings-window-to",
+          "UpdateType": "Immutable",
+          "Required": false,
+          "PrimitiveType": "String"
+        }
+      }
+    },
+    "AWS::Demo::Widget.Replica": {
+      "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-replica.html",
+      "Properties": {
+        "Region": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-replica.html#cfn-demo-widget-replica-region",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "String"
+        },
+        "Priority": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-replica.html#cfn-demo-widget-replica-priority",
+          "UpdateType": "Immutable",
+          "Required": false,
+          "PrimitiveType": "Integer"
+        }
+      }
+    },
+    "AWS::Demo::Widget.Status": {
+      "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-status.html",
+      "Properties": {
+        "Message": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-status.html#cfn-demo-widget-status-message",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "String"
+        },
+        "Code": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-status.html#cfn-demo-widget-status-code",
+          "UpdateType": "Conditional",
+          "Required": false,
+          "PrimitiveType": "Integer"
+        }
+      }
+    },
+    "AWS::Demo::Widget.SpecNested": {
+      "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-specnested.html",
+      "Properties": {
+        "Alias": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-widget-specnested.html#cfn-demo-widget-specnested-alias",
+          "UpdateType": "Mutable",
+          "Required": true,
+          "PrimitiveType": "String"
+        }
+      }
+    },
+    "AWS::Demo::OnlySpec.Sub": {
+      "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-onlyspec-sub.html",
+      "Properties": {
+        "Id": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-onlyspec-sub.html#cfn-demo-onlyspec-sub-id",
+          "UpdateType": "Mutable",
+          "Required": true,
+          "PrimitiveType": "String"
+        },
+        "Rank": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-onlyspec-sub.html#cfn-demo-onlyspec-sub-rank",
+          "UpdateType": "Immutable",
+          "Required": false,
+          "PrimitiveType": "Integer"
+        }
+      }
+    },
+    "AWS::Demo::OnlySpec.Admins": {
+      "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-demo-onlyspec-admins.html",
+      "Type": "List",
+      "Required": false,
+      "ItemType": "Sub",
+      "UpdateType": "Mutable"
+    }
+  },
+  "ResourceTypes": {
+    "AWS::Demo::Widget": {
+      "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html",
+      "Properties": {
+        "Name": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-name",
+          "UpdateType": "Immutable",
+          "Required": true,
+          "PrimitiveType": "String"
+        },
+        "Size": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-size",
+          "UpdateType": "Conditional",
+          "Required": false,
+          "PrimitiveType": "Integer"
+        },
+        "Offset": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-offset",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "Long"
+        },
+        "Ratio": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-ratio",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "Double"
+        },
+        "Enabled": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-enabled",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "Boolean"
+        },
+        "CreatedAt": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-createdat",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "String"
+        },
+        "Level": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-level",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "Level"
+        },
+        "Sizes": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-sizes",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "List",
+          "PrimitiveItemType": "Integer",
+          "DuplicatesAllowed": false
+        },
+        "Zones": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-zones",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "List",
+          "PrimitiveItemType": "String",
+          "DuplicatesAllowed": true
+        },
+        "Labels": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-labels",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "Map",
+          "PrimitiveItemType": "String"
+        },
+        "Settings": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-settings",
+          "UpdateType": "Mutable",
+          "Required": true,
+          "Type": "Settings"
+        },
+        "Tags": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-tags",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "List",
+          "ItemType": "Tag",
+          "DuplicatesAllowed": false
+        },
+        "InlineTags": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-inlinetags",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "List",
+          "ItemType": "Tag",
+          "DuplicatesAllowed": true
+        },
+        "Durable": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-durable",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "Boolean"
+        },
+        "Replicas": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-replicas",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "List",
+          "ItemType": "Replica",
+          "DuplicatesAllowed": true
+        },
+        "Status": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-status",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "Status"
+        },
+        "SpecOnly": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-speconly",
+          "UpdateType": "Conditional",
+          "Required": false,
+          "Type": "List",
+          "ItemType": "SpecNested",
+          "DuplicatesAllowed": false
+        },
+        "ImmutableBySpec": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-widget.html#cfn-demo-widget-immutablebyspec",
+          "UpdateType": "Immutable",
+          "Required": false,
+          "PrimitiveType": "String"
+        }
+      },
+      "Attributes": {
+        "Arn": {
+          "PrimitiveType": "String"
+        },
+        "Endpoint": {
+          "PrimitiveType": "String"
+        }
+      }
+    },
+    "AWS::Demo::OnlySpec": {
+      "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html",
+      "Properties": {
+        "Name": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-name",
+          "UpdateType": "Immutable",
+          "Required": true,
+          "PrimitiveType": "String"
+        },
+        "Port": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-port",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "Integer"
+        },
+        "Big": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-big",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "Long"
+        },
+        "Ratio": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-ratio",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "Double"
+        },
+        "On": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-on",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "Boolean"
+        },
+        "Doc": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-doc",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "PrimitiveType": "Json"
+        },
+        "Sub": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-sub",
+          "UpdateType": "Conditional",
+          "Required": false,
+          "Type": "Sub"
+        },
+        "Many": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-many",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "List",
+          "ItemType": "Sub",
+          "DuplicatesAllowed": false
+        },
+        "ByName": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-byyname",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "Map",
+          "ItemType": "Sub"
+        },
+        "Labels": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-labels",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "Map",
+          "PrimitiveItemType": "String"
+        },
+        "Admins": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-admins",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "Admins"
+        },
+        "Tags": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-tags",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "List",
+          "ItemType": "Tag",
+          "DuplicatesAllowed": true
+        },
+        "Nowhere": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-nowhere",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "Missing"
+        },
+        "Loose": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-loose",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "List",
+          "ItemType": "Missing",
+          "DuplicatesAllowed": true
+        },
+        "Rows": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-rows",
+          "UpdateType": "Mutable",
+          "Required": false,
+          "Type": "List",
+          "ItemType": "Admins"
+        },
+        "Shapeless": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-onlyspec.html#cfn-demo-onlyspec-shapeless",
+          "UpdateType": "Mutable",
+          "Required": false
+        }
+      },
+      "Attributes": {
+        "Arn": {
+          "PrimitiveType": "String"
+        }
+      }
+    },
+    "AWS::Demo::Open": {
+      "AdditionalProperties": true,
+      "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-open.html",
+      "Properties": {
+        "Token": {
+          "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-demo-open.html#cfn-demo-open-token",
+          "UpdateType": "Immutable",
+          "Required": true,
+          "PrimitiveType": "String"
+        }
+      }
+    }
+  },
+  "ResourceSpecificationVersion": "1.2.3"
+}

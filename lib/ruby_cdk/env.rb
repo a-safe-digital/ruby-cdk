@@ -9,16 +9,19 @@ module RubyCdk
     attr_reader :account, :region
 
     def initialize(account:, region:)
-      unless ACCOUNT_PATTERN.match?(account.to_s)
-        raise ArgumentError, "account must be a 12-digit account ID, got #{account.inspect}"
+      # The account must be a String, as the CDK refuses a non-string one
+      # ("Account id of stack environment must be a 'string'", core/lib/stack.ts
+      # parseEnvironment). An Integer's to_s would look fine and slip through.
+      unless account.is_a?(String) && ACCOUNT_PATTERN.match?(account)
+        raise ArgumentError, "account must be a 12-digit account ID as a String, got #{account.inspect}"
       end
 
-      unless REGION_PATTERN.match?(region.to_s)
+      unless region.is_a?(String) && REGION_PATTERN.match?(region)
         raise ArgumentError, "region must look like eu-west-1, got #{region.inspect}"
       end
 
-      @account = account.to_s.freeze
-      @region = region.to_s.freeze
+      @account = account.freeze
+      @region = region.freeze
       freeze
     end
 

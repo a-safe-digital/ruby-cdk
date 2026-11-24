@@ -1,0 +1,6 @@
+{
+  "Description": "This description of the template goes on for a while to prove the point of the rule, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going, and it keeps going",
+  "Resources": {
+    "Bucket": { "Type": "AWS::S3::Bucket" }
+  }
+}

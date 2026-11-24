@@ -1,0 +1,17 @@
+{
+  "Resources": {
+    "Bucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "bucket_name": "snake-case-bucket",
+        "public_access_block_configuration": {
+          "block_public_acls": true,
+          "restrict_public_buckets": true
+        },
+        "ownership_controls": {
+          "rules": [ { "object_ownership": "BucketOwnerEnforced" } ]
+        }
+      }
+    }
+  }
+}

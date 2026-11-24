@@ -1,0 +1,23 @@
+{
+  "Conditions": {
+    "IsProd": { "Fn::Equals": ["a", "a"] }
+  },
+  "Resources": {
+    "Group": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "MinSize": 1,
+        "MaxSize": 2
+      },
+      "UpdatePolicy": {
+        "AutoScalingRollingUpdate": {
+          "Fn::If": [
+            "IsProd",
+            { "MaxBatchSize": 2, "PauseTime": "PT5M" },
+            { "MaxBatchSize": 1, "PauseTime": "PT1M" }
+          ]
+        }
+      }
+    }
+  }
+}

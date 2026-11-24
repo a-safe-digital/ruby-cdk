@@ -1,0 +1,14 @@
+{
+  "Resources": {
+    "One": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": { "Ref": "Two" }
+      }
+    },
+    "Two": {
+      "Type": "AWS::S3::Bucket",
+      "DependsOn": "One"
+    }
+  }
+}
