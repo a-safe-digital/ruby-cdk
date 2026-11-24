@@ -13,13 +13,15 @@ module RubyCdk
       #   PrimitiveType String, Boolean, Integer, Double, Long
       #                            :string, :boolean, :integer, :double, :long
       #   PrimitiveType Json        :json
+      #   PrimitiveType Timestamp   :timestamp
       #   Type List, Type Map       :list or :map; the element from PrimitiveItemType, or
       #                            from ItemType, which names a nested property type
       #   Type <name>               :nested, a definition under that name
       #
       # A property type that is itself a list or a map ("AWS::LakeFormation::DataLakeSettings.Admins")
       # is followed to its element. A name the specification does not define is :json.
-      # The specification has no allowed values and no patterns, and no timestamps.
+      # The specification has no allowed values and no patterns. It does publish
+      # timestamps: the Timestamp primitive, twice in version 273.0.0.
       class SpecificationType
         PRIMITIVES = { "String" => :string, "Boolean" => :boolean, "Integer" => :integer, "Json" => :json, "Double" => :double, "Long" => :long, "Timestamp" => :timestamp }.freeze
         CONTAINERS = %w[List Map].freeze

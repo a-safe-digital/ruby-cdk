@@ -307,9 +307,9 @@ module RubyCdk
         # The union of what two terms accept. A constraint survives only when both state
         # the same one, so the result is never stricter than the truth, with one exception:
         # a bare object ("type": "object" and nothing else) gives way to the other term.
-        # It occurs twice in us-east-1 on 2026-11-23, both times next to the shape every
-        # template uses (AWS::DynamoDB::Table KeySchema, a list or a bare object), and
-        # keeping it would make the property :json, where keys are emitted verbatim.
+        # It occurs once in us-east-1 on 2026-11-24, at AWS::DynamoDB::Table KeySchema
+        # (a list of KeySchema, or a bare object), and keeping it would make the property
+        # :json, where keys are emitted verbatim.
         def or_(left, right)
           return :any if left == :any || right == :any
           return ANY_VALUE if json?(left) || json?(right)
@@ -423,10 +423,35 @@ module RubyCdk
         def read_flags
           FLAGS.each do |key, flag|
             Array(@schema[key]).each do |path|
-              located = locate(segments_of(path))
-              @flags[located] << flag if located
+              segments = segments_of(path)
+              if segments.include?("*")
+                cover_wildcard(segments, flag)
+              else
+                located = locate(segments)
+                @flags[located] << flag if located
+              end
             end
           end
+        end
+
+        # A wildcard flag path ("/properties/Parts/*/Role", or deeper:
+        # "/properties/Rules/*/Outcomes/*/Arn") states the flag for a property of the
+        # elements the wildcards stand in front of; the wildcard is the list index or map
+        # key. AWS writes 183 such paths in us-east-1, with one to three stars, and every
+        # one of them is of this middle shape. Resolved here, once, by walking the
+        # descriptor tree: the literals up to each star locate a property, the star descends
+        # into what that property holds, and the literals after the last star name the
+        # flagged property.
+        def cover_wildcard(segments, flag, container = ROOT)
+          star = segments.index("*") or return finish_wildcard(segments, flag, container)
+          located = locate(segments[0...star], container) or return
+          nested = container_of(@descriptors.dig(located[0], located[1])) or return
+          cover_wildcard(segments[(star + 1)..], flag, nested)
+        end
+
+        def finish_wildcard(rest, flag, container)
+          located = locate(rest, container) if rest.any?
+          @flags[located] << flag if located
         end
 
         def segments_of(path)
@@ -556,11 +581,10 @@ module RubyCdk
 
         def entry(container, property, descriptor, required)
           key = [ container, property ]
-          flags = @flags[key]
           entry = { "kind" => descriptor.kind.to_s }
           entry["item"] = descriptor.item.to_s if descriptor.item
           entry["of"] = descriptor.of if descriptor.of
-          update = update_of(flags, @specified[key])
+          update = update_of(container, property, @specified[key])
           entry["update"] = update if update
           entry["values"] = descriptor.values unless descriptor.values.nil?
           entry["pattern"] = descriptor.pattern if descriptor.pattern
@@ -576,7 +600,14 @@ module RubyCdk
         # conditionalCreateOnlyProperties make it conditional; and a writable property
         # neither source mentions is mutable, since the provider schema passes it to the
         # update handler. A read-only property has no behaviour, since nothing updates it.
-        def update_of(flags, said)
+        #
+        # The flags are the ones the provider schema states for the property's own path,
+        # plus what wildcard flag paths cover it (see cover_wildcard): AWS::MSK::Replicator
+        # writes its replication info as createOnlyProperties "/properties/ReplicationInfoList/*",
+        # and 150 more properties travel only in such wildcard paths, all of which would
+        # otherwise look writable to the diff.
+        def update_of(container, property, said)
+          flags = @flags[[ container, property ]]
           return "immutable" if flags.include?(:create_only)
           return nil if flags.include?(:read_only)
           return said["update"] if said && said["update"]

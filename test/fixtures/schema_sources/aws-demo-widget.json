@@ -9,14 +9,18 @@
   ],
   "createOnlyProperties": [
     "/properties/Name",
-    "/properties/Settings/ApiKey"
+    "/properties/Settings/ApiKey",
+    "/properties/Parts/*/Name"
   ],
   "conditionalCreateOnlyProperties": [
     "/properties/Durable"
   ],
   "readOnlyProperties": [
     "/properties/Arn",
-    "/properties/Status/Message"
+    "/properties/Status/Message",
+    "/properties/Audits/*/State",
+    "/properties/Audits/*/CheckedAt",
+    "/properties/Parts/*/Role"
   ],
   "properties": {
     "Name": {
@@ -244,6 +248,18 @@
         "$ref": "#/definitions/Replica"
       }
     },
+    "Parts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Part"
+      }
+    },
+    "Audits": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Audit"
+      }
+    },
     "Status": {
       "$ref": "#/definitions/Status"
     }
@@ -363,6 +379,32 @@
         },
         "Priority": {
           "type": "integer"
+        }
+      }
+    },
+    "Part": {
+      "type": "object",
+      "properties": {
+        "Name": {
+          "type": "string"
+        },
+        "Role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "Name"
+      ]
+    },
+    "Audit": {
+      "type": "object",
+      "properties": {
+        "State": {
+          "type": "string"
+        },
+        "CheckedAt": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     },

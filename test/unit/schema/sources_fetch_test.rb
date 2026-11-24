@@ -52,4 +52,56 @@ class SourcesFetchTest < Minitest::Test
   def test_a_last_modified_in_the_future_is_taken_as_fresh
     assert_equal [], Fetcher.new.problems(download(last_modified: SchemaFixtures::NOW + 3600), now: SchemaFixtures::NOW)
   end
+
+  # The real GET. The Accept-Encoding subtlety is why this is pinned with a stubbed
+  # Net::HTTP.start: left to its own defaults, Net::HTTP decodes a Content-Encoding body,
+  # and META.json would record the size and hash of the wrong bytes.
+  def test_fetch_asks_for_gzip_and_maps_the_headers
+    body = "the transfer as served"
+    download, requests, started = fetch_with(body:, headers: { "Last-Modified" => "Wed, 01 Nov 2026 09:30:00 GMT", "ETag" => "\"abc123\"" })
+
+    assert_equal 200, download.status
+    assert_equal body, download.body
+    assert_equal Time.utc(2026, 11, 1, 9, 30), download.last_modified
+    assert_equal "\"abc123\"", download.etag
+    assert_equal "gzip", requests.first["Accept-Encoding"]
+    assert_equal "/source", requests.first.path
+    assert_equal [ "example.invalid", 443, { use_ssl: true, open_timeout: Fetcher::OPEN_TIMEOUT, read_timeout: Fetcher::READ_TIMEOUT } ], started.first
+  end
+
+  def test_an_unreadable_last_modified_is_taken_as_absent
+    download, = fetch_with(headers: { "Last-Modified" => "not a date at all", "ETag" => "\"x\"" })
+
+    assert_nil download.last_modified
+    assert_equal "\"x\"", download.etag
+  end
+
+  private
+
+  # Runs Fetcher#call once against a stubbed Net::HTTP.start that answers with one canned
+  # response. Answers [download, requests, started]: the request objects and the arguments
+  # start saw, for the assertions above.
+  def fetch_with(status: "200", body: "stored", headers: {})
+    response = Struct.new(:code, :body).new(status, body)
+    response.define_singleton_method(:[]) { |key| headers.fetch(key) }
+
+    requests = []
+    http = Object.new
+    http.define_singleton_method(:request) do |request|
+      requests << request
+      response
+    end
+
+    started = []
+    stub = lambda do |host, port, **options, &block|
+      started << [ host, port, options ]
+      block.call(http)
+    end
+
+    download = nil
+    Net::HTTP.stub(:start, stub) do
+      download = Fetcher.new.call(URL)
+    end
+    [ download, requests, started ]
+  end
 end

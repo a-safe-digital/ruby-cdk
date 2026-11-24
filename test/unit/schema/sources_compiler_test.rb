@@ -111,7 +111,7 @@ class SourcesCompilerTest < Minitest::Test
     widget = type(compiled, WIDGET)
 
     assert_equal [ "nested", nil, "Settings", "mutable", nil ], shape(compiled, WIDGET, "Settings")
-    named_by_provider = %w[Level Strictness Tier BucketName ParameterConstraints Settings Tag S3Location Parameters ParameterMap Replica Status]
+    named_by_provider = %w[Audit Level ParameterConstraints ParameterMap Part Replica S3Location Settings Status Strictness Tag Tier]
     assert_equal %w[InlineTags Route Settings.Window SpecNested Store], (widget["definitions"].keys - named_by_provider).sort
     refute widget["definitions"].key?("Unused"), "a definition nothing reaches is not written"
 
@@ -169,10 +169,27 @@ class SourcesCompilerTest < Minitest::Test
     unlisted = type(compile, UNLISTED)
 
     assert_equal %w[Name Settings], widget["required"]
-    assert_equal %w[ImmutableBySpec Name Settings.ApiKey], widget["create_only"]   # the provider's paths and what the specification marks Immutable
-    assert_equal %w[Arn Endpoint Status.Message], widget["read_only"]              # the provider's paths and the specification's Attributes
+    assert_equal %w[ImmutableBySpec Name Parts.*.Name Settings.ApiKey], widget["create_only"]   # the provider's paths, wildcards included, and what the specification marks Immutable
+    assert_equal %w[Arn Audits.*.CheckedAt Audits.*.State Endpoint Parts.*.Role Status.Message], widget["read_only"]
     assert_equal [ "Token" ], unlisted["create_only"]
     assert_equal [], unlisted["read_only"]
+  end
+
+  # A wildcard flag path states the flag for the properties of a list's or map's elements;
+  # 183 of them exist in us-east-1, and without this the diff would read a replacement as
+  # a mutable update.
+  def test_wildcard_flag_paths_cover_the_properties_of_the_elements
+    compiled = compile
+    widget = type(compiled, WIDGET)
+
+    assert_equal "immutable", shape(compiled, WIDGET, "Name", "Part")[3]       # /properties/Parts/*/Name
+    assert_nil shape(compiled, WIDGET, "Role", "Part")[3]                      # /properties/Parts/*/Role
+    refute type(compiled, WIDGET)["definitions"].fetch("Audit")["properties"].to_h.fetch("State").key?("update")  # /properties/Audits/*/State
+    refute type(compiled, WIDGET)["definitions"].fetch("Audit")["properties"].to_h.fetch("CheckedAt").key?("update")
+    refute type(compiled, WIDGET)["definitions"].fetch("Part")["properties"].to_h.fetch("Role").key?("update")    # /properties/Parts/*/Role
+    # The wildcard covers the properties under the path, not the list itself.
+    assert_equal "mutable", shape(compiled, WIDGET, "Parts")[3]
+    assert_equal "mutable", shape(compiled, WIDGET, "Audits")[3]
   end
 
   def test_properties_only_the_specification_knows_are_added_last
@@ -320,6 +337,8 @@ class SourcesCompilerTest < Minitest::Test
         "UntypedObject" => { "properties" => { "E" => { "type" => "string" } } },
         "UntypedTime" => { "format" => "date-time" },
         "Bare" => { "type" => "object" },
+        "OneOfDefs" => { "oneOf" => [ { "$ref" => "#/definitions/Base" }, { "$ref" => "#/definitions/Other" } ] },
+        "SameRefTwice" => { "allOf" => [ { "$ref" => "#/definitions/Base" }, { "$ref" => "#/definitions/Base" } ] },
         # AWS::DynamoDB::Table KeySchema is written exactly like this.
         "ListOrObject" => { "oneOf" => [ { "type" => "array", "uniqueItems" => true, "items" => { "$ref" => "#/definitions/Base" } }, { "type" => "object" } ] },
         "MapOrObject" => { "anyOf" => [ { "type" => "object", "patternProperties" => { ".+" => { "type" => "string" } } }, { "type" => "object" } ] },
@@ -381,6 +400,13 @@ class SourcesCompilerTest < Minitest::Test
     assert_equal [ "nested", nil, "Twice", "mutable", nil ], shape(compiled, algebra, "Twice")
     assert_equal [ "json", nil, nil, "mutable", nil ], shape(compiled, algebra, "Inside", "Twice")
     assert_equal %w[Inside], definitions.fetch("Twice")["required"]
+    # A union of two named definitions that differ: one inline definition, nothing required.
+    assert_equal [ "nested", nil, "OneOfDefs", "mutable", nil ], shape(compiled, algebra, "OneOfDefs")
+    assert_equal %w[Name Other], definitions.fetch("OneOfDefs")["properties"].map(&:first).sort
+    assert_equal [], definitions.fetch("OneOfDefs")["required"]
+    # The same definition required twice: it is that definition, unchanged.
+    assert_equal [ "nested", nil, "Base", "mutable", nil ], shape(compiled, algebra, "SameRefTwice")
+    assert_equal %w[Name], definitions.fetch("Base")["required"]
   end
 
   def test_a_primitive_type_this_version_does_not_know_fails_loudly
