@@ -29,7 +29,10 @@ class CliDeployOptionsTest < CliHelpers::TestCase
       require "ruby-cdk"
       RubyCdk::App.new(env: RubyCdk::Env.new(account: "#{CliHelpers::ACCOUNT}", region: "#{CliHelpers::REGION}")) do |app|
         RubyCdk::Stack.new(app, "web") do
-          resource("Function", "AWS::Lambda::Function", properties: { "Code" => asset.zip(#{files.inspect}).s3_location })
+          resource("Function", "AWS::Lambda::Function", properties: {
+            "Code" => asset.zip(#{files.inspect}).s3_location,
+            "Role" => "arn:aws:iam::#{CliHelpers::ACCOUNT}:role/lambda-basic"
+          })
         end
       end
     RUBY

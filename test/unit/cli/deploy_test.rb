@@ -15,7 +15,12 @@ class CliDeployTest < CliHelpers::TestCase
         resource("Vpc", "AWS::EC2::VPC", properties: { "CidrBlock" => "10.0.0.0/16" })
       end
       RubyCdk::Stack.new(app, "web") { resource("Queue", "AWS::SQS::Queue") }.add_dependency(network)
-      RubyCdk::Stack.new(app, "db") { resource("Table", "AWS::DynamoDB::Table") }.add_dependency(network)
+      RubyCdk::Stack.new(app, "db") do
+        resource("Table", "AWS::DynamoDB::Table", properties: {
+          "AttributeDefinitions" => [ { "AttributeName" => "id", "AttributeType" => "S" } ],
+          "KeySchema" => [ { "AttributeName" => "id", "KeyType" => "HASH" } ]
+        })
+      end.add_dependency(network)
     end
   RUBY
   CIRCLE = <<~RUBY
@@ -92,7 +97,9 @@ class CliDeployTest < CliHelpers::TestCase
 
     assert_equal 0, result.code
     assert_equal "Outputs:\n  QueueName = https://sqs.eu-west-1.amazonaws.com/#{CliHelpers::ACCOUNT}/hello\n", result.out.string
-    assert_equal({ "QueueName" => "https://sqs.eu-west-1.amazonaws.com/#{CliHelpers::ACCOUNT}/hello" },
+    # The file carries one entry per stack, as the CDK accumulates it
+    # (cdk-toolkit.ts:2696): another stack's entry survives this deploy's.
+    assert_equal({ "hello" => { "QueueName" => "https://sqs.eu-west-1.amazonaws.com/#{CliHelpers::ACCOUNT}/hello" } },
       JSON.parse(File.read(File.join(dir, "out", "outputs.json"))))
   end
 
