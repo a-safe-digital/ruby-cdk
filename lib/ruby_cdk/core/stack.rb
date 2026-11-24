@@ -16,6 +16,10 @@ module RubyCdk
     # unique_name ends with this many hex characters of a SHA-256.
     UNIQUE_NAME_HASH_LENGTH = 8
 
+    # The longest description a stack can carry: CloudFormation's limit, which
+    # the CDK refuses too (StackDescriptionTooLong).
+    MAX_DESCRIPTION_LENGTH = 512
+
     # Shorter than this, no name is a valid S3 bucket name.
     MIN_UNIQUE_NAME_LENGTH = 3
 
@@ -36,7 +40,7 @@ module RubyCdk
       @app = scope
       @stack_name = "#{scope.stack_name_prefix}#{self.id}"
       @env = env || scope.env
-      @description = description && text(description, "description")
+      @description = description && described(description)
       @tags = tag_hash(tags)
       @stateful_default = Core::Stateful.validate_default!(stateful_default || scope.stateful_default)
       @termination_protection = termination_protection ? true : false
@@ -154,10 +158,21 @@ module RubyCdk
     end
 
     # Makes this stack deploy after another one.
+    #
+    # A cycle is refused here and now, as the CDK refuses one at
+    # addStackDependency ("cyclic reference", core/lib/stack.ts:1044): walking
+    # the other stack's dependencies finds this stack before the deploy order
+    # would.
     def add_dependency(stack)
-      raise UsageError, "#{path}: a stack cannot depend on itself" if stack.equal?(self)
       unless stack.is_a?(Stack)
         raise UsageError, "#{path}: add_dependency takes a Stack, got #{stack.inspect}"
+      end
+      raise UsageError, "#{path}: a stack cannot depend on itself" if stack.equal?(self)
+
+      reached = reaches?(stack, self)
+      if reached
+        raise UsageError, "#{path}: depending on #{stack.stack_name} makes a cyclic reference: " \
+          "#{stack.stack_name} already depends on #{stack_name}, directly or through the stacks between them"
       end
 
       @dependencies << stack unless @dependencies.include?(stack)
@@ -210,6 +225,35 @@ module RubyCdk
     end
 
     private
+
+    # The stack's description: a String or a Symbol, at most MAX_DESCRIPTION_LENGTH
+    # characters, as the CDK refuses a longer one (StackDescriptionTooLong,
+    # core/lib/stack.ts).
+    def described(description)
+      text = text(description, "description")
+      if text.length > MAX_DESCRIPTION_LENGTH
+        raise UsageError, "#{path}: the description is #{text.length} characters, and at most " \
+          "#{MAX_DESCRIPTION_LENGTH} are taken (CloudFormation's limit, the CDK's StackDescriptionTooLong)"
+      end
+
+      text
+    end
+
+    # Whether walking target's dependencies, through the stacks between them,
+    # reaches the wanted stack.
+    def reaches?(target, wanted)
+      seen = [ self ]
+      frontier = [ target ]
+      until frontier.empty?
+        current = frontier.pop
+        return true if current.equal?(wanted)
+        next if seen.include?(current)
+
+        seen << current
+        frontier.concat(current.dependencies)
+      end
+      false
+    end
 
     # Declares an element under its id. The id has to be a logical ID that
     # CloudFormation takes, here and now: kind names it in the message.
