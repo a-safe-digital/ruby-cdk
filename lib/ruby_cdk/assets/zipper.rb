@@ -66,7 +66,8 @@ module RubyCdk
 
         # The file as it was hashed, or AssetChangedError. It is never followed
         # through a symbolic link: the Hasher refuses those, so a link here is
-        # a change too.
+        # a change too. A file that cannot be read at all is a change as well,
+        # reported as one and named, not as a bare system error.
         def read(record, file)
           path = File.join(record.source_path, file.path)
           stat = File.lstat(path)
@@ -81,6 +82,9 @@ module RubyCdk
           raise AssetChangedError, "#{path} changed after the asset was hashed. Synthesize again."
         rescue Errno::ENOENT
           raise AssetChangedError, "#{path} no longer exists. The asset changed after it was hashed. Synthesize again."
+        rescue SystemCallError => error
+          raise AssetChangedError, "#{path} cannot be read (#{error.message}). The asset changed after it was hashed. " \
+                                   "Synthesize again."
         end
 
         # Every field that could carry something time-, machine- or

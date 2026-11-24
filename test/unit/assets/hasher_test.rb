@@ -165,13 +165,16 @@ class AssetsHasherTest < Minitest::Test
 
   def test_the_manifest_lists_every_file_sorted_by_relative_path_with_its_mode_and_content_hash
     with_directory do |dir|
-      write_tree(dir, FIXTURE.merge("lib/a.txt" => "a", "z.rb" => "z", "é.rb" => "é"))
+      # "lib.rb" sorts before "lib/...": the manifest is sorted by the whole
+      # path, which the per-directory walk alone would not give, because its
+      # root children put the directory "lib" before the file "lib.rb".
+      write_tree(dir, FIXTURE.merge("lib/a.txt" => "a", "lib.rb" => "lib", "z.rb" => "z", "é.rb" => "é"))
       File.chmod(0o755, File.join(dir, "bin/run"))
 
       manifest = hasher.manifest(dir)
 
-      assert_equal %w[app.rb bin/run lib/a.txt lib/deep/nested.txt z.rb é.rb], manifest.map(&:path)
-      assert_equal %w[0644 0755 0644 0644 0644 0644], manifest.map(&:mode)
+      assert_equal %w[app.rb bin/run lib.rb lib/a.txt lib/deep/nested.txt z.rb é.rb], manifest.map(&:path)
+      assert_equal %w[0644 0755 0644 0644 0644 0644 0644], manifest.map(&:mode)
       assert_equal manifest.map(&:path).map { |path| sha256(File.binread(File.join(dir, path))) }, manifest.map(&:sha256)
     end
   end
@@ -400,6 +403,50 @@ class AssetsHasherTest < Minitest::Test
       error = assert_raises(RubyCdk::Assets::UnsupportedEntryError) { hasher.manifest(dir) }
 
       assert_match(/line break/, error.message)
+    end
+  end
+
+  def test_a_file_name_with_a_backslash_is_refused
+    with_directory do |dir|
+      # Legal on POSIX, but the zip would carry it verbatim, and readers that
+      # take a backslash for a separator would not find the file where the
+      # hash says it is.
+      File.write(File.join(dir, "a\\b.rb"), "x")
+
+      error = assert_raises(RubyCdk::Assets::UnsupportedEntryError) { hasher.manifest(dir) }
+
+      assert_match(/backslash/, error.message)
+      # The message shows the name through inspect, which doubles the backslash.
+      assert_includes error.message, "a\\b.rb".inspect
+    end
+  end
+
+  def test_an_unreadable_file_is_reported_as_its_own_error
+    skip "root reads every file" if Process.euid.zero?
+
+    with_directory do |dir|
+      write_tree(dir, { "app.rb" => "app", "secret" => "s" })
+      File.chmod(0o000, File.join(dir, "secret"))
+
+      error = assert_raises(RubyCdk::Assets::SourceNotFoundError) { hasher.manifest(dir) }
+
+      assert_match(/secret/, error.message)
+      assert_match(/cannot be read/, error.message)
+    end
+  end
+
+  def test_an_unlistable_directory_is_reported_as_its_own_error
+    skip "root reads every directory" if Process.euid.zero?
+
+    with_directory do |dir|
+      write_tree(dir, { "app.rb" => "app" })
+      Dir.mkdir(File.join(dir, "locked"))
+      File.chmod(0o000, File.join(dir, "locked"))
+
+      error = assert_raises(RubyCdk::Assets::SourceNotFoundError) { hasher.manifest(dir) }
+
+      assert_match(/locked/, error.message)
+      assert_match(/cannot be read/, error.message)
     end
   end
 

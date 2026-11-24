@@ -5,7 +5,8 @@ require_relative "../errors"
 
 module RubyCdk
   module Assets
-    # The path given as an asset is not a directory: empty, missing, or a file.
+    # The path given as an asset is not a directory, or something under it
+    # could not be read.
     class SourceNotFoundError < Error; end
 
     # A symbolic link sits inside an asset directory.
@@ -50,8 +51,10 @@ module RubyCdk
         # a pattern with a slash, against the whole relative path.
         #
         # Raises SourceNotFoundError when the path is empty or is not a
-        # directory, SymlinkError for a symbolic link that is not excluded, and
-        # UnsupportedEntryError for anything else that is not a regular file.
+        # directory, or when something under it cannot be read; SymlinkError
+        # for a symbolic link that is not excluded; UnsupportedEntryError for
+        # anything else that is not a regular file, or a name that would not
+        # survive the canonical text or the zip.
         def manifest(source_path, exclude: [])
           entries = []
           walk(File.expand_path(usable(source_path)), "", DEFAULT_EXCLUDES + Array(exclude), entries)
@@ -92,13 +95,13 @@ module RubyCdk
         end
 
         def walk(directory, prefix, patterns, entries)
-          Dir.children(directory).sort.each do |child|
+          readable_children(directory).each do |child|
             name = child.dup.force_encoding(Encoding::UTF_8)
             relative = prefix.empty? ? name : "#{prefix}/#{name}"
             next if excluded?(relative, patterns)
 
             path = File.join(directory, name)
-            stat = File.lstat(path)
+            stat = readable_stat(path, relative)
             if stat.symlink?
               raise SymlinkError, "Symbolic links are not allowed in an asset: #{relative} -> #{File.readlink(path)}. " \
                                   "Copy the file instead."
@@ -108,11 +111,31 @@ module RubyCdk
             if stat.directory?
               walk(path, relative, patterns, entries)
             elsif stat.file?
-              entries << Entry.new(path: relative, mode: mode_for(stat), sha256: Digest::SHA256.file(path).hexdigest)
+              entries << Entry.new(path: relative, mode: mode_for(stat), sha256: readable_digest(path, relative))
             else
               raise UnsupportedEntryError, "#{relative} is a #{stat.ftype}, not a regular file, so it cannot be in an asset"
             end
           end
+        end
+
+        # A file-system failure under the walk is not a bug but a source this
+        # tool cannot read, so it is reported as one and named.
+        def readable_children(directory)
+          Dir.children(directory).sort
+        rescue SystemCallError => error
+          raise SourceNotFoundError, "Asset directory #{directory} cannot be read (#{error.message})"
+        end
+
+        def readable_stat(path, relative)
+          File.lstat(path)
+        rescue SystemCallError => error
+          raise SourceNotFoundError, "Asset entry #{relative} cannot be read (#{error.message})"
+        end
+
+        def readable_digest(path, relative)
+          Digest::SHA256.file(path).hexdigest
+        rescue SystemCallError => error
+          raise SourceNotFoundError, "Asset entry #{relative} cannot be read (#{error.message})"
         end
 
         def excluded?(relative, patterns)
@@ -123,10 +146,18 @@ module RubyCdk
         end
 
         # A line break would split one file into two lines of the canonical
-        # text, and the zip entry name of a file must be valid UTF-8.
+        # text. A backslash is legal in a POSIX name, but the zip carries it
+        # verbatim and a reader that takes it for a separator would not find
+        # the file where the hash says it is. A zip entry name must be valid
+        # UTF-8.
         def check_name(relative)
           if relative.include?("\n")
             raise UnsupportedEntryError, "A file name with a line break cannot be in an asset: #{relative.inspect}"
+          end
+          if relative.include?("\\")
+            raise UnsupportedEntryError, "A file name with a backslash cannot be in an asset: #{relative.inspect}. " \
+                                         "The zip would carry it verbatim, and readers that take a backslash " \
+                                         "for a separator would not find the file where the hash says it is."
           end
           return if relative.valid_encoding?
 
