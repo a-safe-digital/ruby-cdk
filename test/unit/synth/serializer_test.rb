@@ -61,7 +61,8 @@ class SynthSerializerTest < CoreHelpers::TestCase
                 "AttributeName": "pk",
                 "KeyType": "HASH"
               }
-            ]
+            ],
+            "DeletionProtectionEnabled": false
           }
         },
         "Fn": {
@@ -69,11 +70,13 @@ class SynthSerializerTest < CoreHelpers::TestCase
           "DeletionPolicy": "Retain",
           "UpdateReplacePolicy": "Retain",
           "Properties": {
+            "Code": {
+              "ZipFile": "x"
+            },
             "Timeout": 10,
-            "MemorySize": 128.5,
-            "Tracing": true,
-            "Retained": false,
-            "Table": {
+            "MemorySize": 512,
+            "PublishToLatestPublished": true,
+            "Description": {
               "Ref": "Table"
             },
             "Role": {
@@ -82,7 +85,7 @@ class SynthSerializerTest < CoreHelpers::TestCase
                 "Arn"
               ]
             },
-            "Url": {
+            "Handler": {
               "Fn::Join": [
                 ".",
                 [
@@ -94,6 +97,9 @@ class SynthSerializerTest < CoreHelpers::TestCase
               ]
             }
           }
+        },
+        "Other": {
+          "Type": "AWS::SQS::Queue"
         }
       },
       "Outputs": {
@@ -122,10 +128,11 @@ class SynthSerializerTest < CoreHelpers::TestCase
       mapping("Regions", eu: { west: "eu-west-1" })
       condition("IsProd", Fn.equals(Fn.ref("Stage"), "prod"))
       table = resource("Table", "AWS::DynamoDB::Table", "KeySchema" => [ { "AttributeName" => "pk", "KeyType" => "HASH" } ],
-        condition: "IsProd", metadata: { "Team" => "Platform" }, depends_on: [ "Other" ])
-      resource("Fn", "AWS::Lambda::Function", "Timeout" => 10, "MemorySize" => 128.5, "Tracing" => true, "Retained" => false,
-        "Table" => Fn.ref(table), "Role" => Fn.get_att(table, "Arn"), "Url" => Fn.join(".", [ "https:", Fn.ref(table) ]),
-        deletion_policy: :retain)
+        "DeletionProtectionEnabled" => false, condition: "IsProd", metadata: { "Team" => "Platform" }, depends_on: [ "Other" ])
+      resource("Fn", "AWS::Lambda::Function", "Code" => { "ZipFile" => "x" }, "Timeout" => 10, MemorySize: 512,
+        "PublishToLatestPublished" => true, "Description" => Fn.ref(table), "Role" => Fn.get_att(table, "Arn"),
+        "Handler" => Fn.join(".", [ "https:", Fn.ref(table) ]), deletion_policy: :retain)
+      resource("Other", "AWS::SQS::Queue")
       export("TableName", value: Fn.ref(table))
       output("Url", value: "x", description: "Where it lives")
       add_metadata("Notes", "none")
