@@ -18,7 +18,9 @@ module RubyCdk
 
     # Shorter than this, no name is a valid S3 bucket name.
     MIN_UNIQUE_NAME_LENGTH = 3
-    DEFAULT_UNIQUE_NAME_MAX_LENGTH = 64
+
+    # The longest S3 bucket name: a unique_name with the default is always one.
+    DEFAULT_UNIQUE_NAME_MAX_LENGTH = 63
 
     attr_reader :stack_name, :termination_protection, :app, :env, :description, :tags, :stateful_default
 
@@ -46,6 +48,7 @@ module RubyCdk
       @conditions = {}
       @metadata = {}
       @dependencies = []
+      @transforms = []
 
       if block
         instance_eval(&block)
@@ -59,14 +62,14 @@ module RubyCdk
     end
 
     def parameter(id, type:, default: nil, description: nil, allowed_values: nil, no_echo: false)
-      declare(@parameters, id) do |name|
+      declare(@parameters, id, "parameter") do |name|
         Core::Parameter.new(self, name, type:, default:, description:, allowed_values:, no_echo:)
       end
     end
 
     def output(id, value:, description: nil, export: false, condition: nil)
       name_of_condition = Core::Ids.condition_name(condition, "#{path}: output #{id.inspect}")
-      declare(@outputs, id) do |name|
+      declare(@outputs, id, "output") do |name|
         Core::Output.new(self, name, value:, description:, export:, condition: name_of_condition)
       end
     end
@@ -76,23 +79,44 @@ module RubyCdk
       output(id, value:, description:, export: true)
     end
 
-    # "#{stack_name}-#{id}"
+    # "#{stack_name}-#{id}", the name under which `export(id, ...)` exports. id
+    # is the id of an output, so it follows the same rule as one.
     def export_name(id)
-      "#{stack_name}-#{Core::Ids.validate_id!(id, scope: self)}"
+      name = Core::Ids.validate_id!(id, scope: self)
+      Core::Ids.validate_logical_id!(name, where: "#{path}: the output #{name.inspect} that export_name names")
+
+      "#{stack_name}-#{name}"
     end
 
     def mapping(id, hash)
-      declare(@mappings, id) { |name| Core::Mapping.new(self, name, hash) }
+      declare(@mappings, id, "mapping") { |name| Core::Mapping.new(self, name, hash) }
     end
 
     def condition(id, fn)
-      declare(@conditions, id) { |name| Core::Condition.new(self, name, fn) }
+      declare(@conditions, id, "condition") { |name| Core::Condition.new(self, name, fn) }
     end
 
     # Adds to the template's Metadata section.
     def add_metadata(key, value)
       @metadata[text(key, "metadata key")] = value
       self
+    end
+
+    # Declares a transform for the template, written as its Transform section:
+    # a macro that Fn.transform calls, or AWS::Serverless-2016-10-31. Declaring
+    # one twice changes nothing.
+    #
+    # Synthesis calls it too: a value that CloudFormation accepts only under a
+    # transform gets that transform, as a stack in the CDK does.
+    def transform(name)
+      name = text(name, "transform")
+      @transforms << name unless @transforms.include?(name)
+      self
+    end
+
+    # Every transform the template declares, in the order they were declared.
+    def transforms
+      @transforms.dup.freeze
     end
 
     # The builder of the stack's file assets.
@@ -108,6 +132,10 @@ module RubyCdk
     # "account:region:stack_name:suffix", so the name is stable across deploys
     # and different in another account or region. A name longer than
     # max_length is shortened from the left. Needs a concrete env.
+    #
+    # With the default max_length the name is always a valid S3 bucket name:
+    # 3 to 63 characters, starting and ending with a letter or a digit. A
+    # service whose names may be longer takes a larger max_length.
     def unique_name(suffix = nil, max_length: DEFAULT_UNIQUE_NAME_MAX_LENGTH)
       unless env
         raise UsageError, "#{path}: unique_name needs a concrete env. Give the Stack or its App " \
@@ -183,8 +211,11 @@ module RubyCdk
 
     private
 
-    def declare(collection, id)
+    # Declares an element under its id. The id has to be a logical ID that
+    # CloudFormation takes, here and now: kind names it in the message.
+    def declare(collection, id, kind)
       name = Core::Ids.validate_id!(id, scope: self)
+      Core::Ids.validate_logical_id!(name, where: "#{path}: the #{kind} #{name.inspect}")
       if collection.key?(name)
         raise UsageError, "#{path} declares #{name.inspect} twice"
       end

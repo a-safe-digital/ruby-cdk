@@ -11,6 +11,11 @@ module RubyCdk
       # A logical ID in a template: letters and digits, nothing else.
       LOGICAL_ID_PATTERN = /\A[A-Za-z0-9]+\z/
 
+      # The longest a logical ID can be: CloudFormation's limit for the name of
+      # a parameter, a resource, an output or a mapping. Construct::MAX_ID_LENGTH
+      # is this number: an id is a logical ID when it sits in a Stack.
+      MAX_LOGICAL_ID_LENGTH = 255
+
       module_function
 
       # Raises UsageError unless id can name a construct: a String or a Symbol
@@ -31,6 +36,44 @@ module RubyCdk
         end
 
         name
+      end
+
+      # Raises UsageError unless name can be the logical ID of an element of a
+      # template, a parameter, an output, a mapping, a condition or a resource:
+      # what rule V2 asks of it. where names the element and its id, as
+      # 'App/blog: the output "table_name"'. Returns name.
+      def validate_logical_id!(name, where:)
+        problem = logical_id_message(name)
+        Kernel.raise UsageError, "#{where}: #{problem}" if problem
+
+        name
+      end
+
+      # The whole of what is wrong with name as a logical ID, in the words of
+      # rule V2, or nil when nothing is: the fault, and how to write it instead.
+      def logical_id_message(name)
+        fault = logical_id_fault(name)
+        return nil unless fault
+        return fault unless LOGICAL_ID_PATTERN.match?(name)
+
+        "#{fault}. #{logical_id_way_out(name)}"
+      end
+
+      # The fault alone, as rule V2 states it: the characters, or the length.
+      def logical_id_fault(name)
+        if name.length > MAX_LOGICAL_ID_LENGTH
+          "the logical ID \"#{name[0, 32]}...\" is longer than #{MAX_LOGICAL_ID_LENGTH} characters"
+        elsif LOGICAL_ID_PATTERN.match?(name)
+          nil
+        else
+          "the logical ID #{name.inspect} must hold letters and digits only"
+        end
+      end
+
+      # How to write it instead, for a logical ID that holds something else
+      # than letters and digits.
+      def logical_id_way_out(name)
+        "CloudFormation takes no \"_\", \"-\" or \".\" in a logical ID: write #{spelled_without_punctuation(name)}"
       end
 
       # The logical ID of a node: the ids of the enclosing constructs, from the
@@ -62,6 +105,12 @@ module RubyCdk
 
         Kernel.raise UsageError, "#{what} takes a condition the stack declared, or its name, got #{condition.inspect}"
       end
+
+      # "my_table" as "MyTable".
+      def spelled_without_punctuation(name)
+        name.split(/[^A-Za-z0-9]+/).map(&:capitalize).join
+      end
+      private_class_method :spelled_without_punctuation
     end
   end
 end
