@@ -40,11 +40,14 @@ module RubyCdk
         # The CDK's isCreationFailure: only a delete is possible, then a new creation.
         "ROLLBACK_COMPLETE" => :rollback_complete,
         "ROLLBACK_FAILED" => :rollback_complete,
-        # A rollback is waiting to be continued.
+        # A rollback is waiting to be continued, for an update as for an import:
+        # an IMPORT_COMPLETE stack whose update fails rolls back into
+        # IMPORT_ROLLBACK_FAILED.
         "UPDATE_ROLLBACK_FAILED" => :rollback_failed,
         "CREATE_FAILED" => :rollback_failed,
         "UPDATE_FAILED" => :rollback_failed,
-        "DELETE_FAILED" => :rollback_failed
+        "DELETE_FAILED" => :rollback_failed,
+        "IMPORT_ROLLBACK_FAILED" => :rollback_failed
       }.freeze
 
       # The state of a stack status, or nil for a status this tool does not know.

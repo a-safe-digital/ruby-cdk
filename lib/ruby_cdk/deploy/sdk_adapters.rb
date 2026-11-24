@@ -304,7 +304,7 @@ module RubyCdk
             change_set_name: change_set_name,
             template_body: template,
             change_set_type: change_set_type.to_s.upcase,
-            parameters: pairs(parameters, :parameter_key, :parameter_value),
+            parameters: parameter_pairs(parameters),
             tags: pairs(tags, :key, :value),
             capabilities: capabilities
           }
@@ -464,6 +464,20 @@ module RubyCdk
         # The SDK takes { key: ..., value: ... }; the engine may give either kind of key.
         def pairs(list, key, value)
           list.map { |pair| { key => pair[key] || pair[key.to_s], value => pair[value] || pair[value.to_s] } }
+        end
+
+        # A parameter either carries its value or asks for the deployed one
+        # (UsePreviousValue, for a NoEcho value that comes back masked and goes
+        # back masked).
+        def parameter_pairs(list)
+          list.map do |pair|
+            key = pair[:parameter_key] || pair["parameter_key"]
+            if pair[:use_previous_value]
+              { parameter_key: key, use_previous_value: true }
+            else
+              { parameter_key: key, parameter_value: pair[:parameter_value] || pair["parameter_value"] }
+            end
+          end
         end
 
         # A structure of the SDK as a plain Hash, all the way down.

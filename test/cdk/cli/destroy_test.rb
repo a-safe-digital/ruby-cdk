@@ -98,9 +98,9 @@ class CdkCliDestroyTest < Minitest::Test
   def test_destroy_from_builder
     given_stack_exists(client, name: "Stack1")
 
-    result = destroy(client, stack_name: "Stack1", options: unattended)
+    result = destroy(client, stack: cdk_stack(name: "Stack1"), options: unattended)
 
-    assert_equal :deployed, result.outcome
+    assert_equal :destroyed, result.outcome
     assert_equal 0, result.exit_code
     assert_equal "DELETE_COMPLETE", client.stack_record("Stack1").status
   end
@@ -116,12 +116,12 @@ class CdkCliDestroyTest < Minitest::Test
     given_stack_exists(client, name: "Stack1")
     out = D::Fakes::Output.new(confirmations: "Stack1")
 
-    result = destroy(client, out, stack_name: "Stack1", options: D::DeployOptions.new)
+    result = destroy(client, out, stack: cdk_stack(name: "Stack1"), options: D::DeployOptions.new)
 
     assert_equal %i[target retained confirm], out.calls.map(&:operation),
       "what is kept is said, then the person is asked, before anything happens"
     assert_equal [ "Stack1" ], out.confirmations, "the answer is the stack name itself"
-    assert_equal :deployed, result.outcome
+    assert_equal :destroyed, result.outcome
     assert_equal 1, client.calls_to(:delete_stack).length
   end
 
@@ -140,7 +140,7 @@ class CdkCliDestroyTest < Minitest::Test
     })
     out = D::Fakes::Output.new
 
-    result = destroy(client, out, stack_name: "Stack1", options: unattended)
+    result = destroy(client, out, stack: cdk_stack(name: "Stack1"), options: unattended)
 
     assert_equal :failed, result.outcome
     assert_equal 5, result.exit_code
@@ -158,7 +158,7 @@ class CdkCliDestroyTest < Minitest::Test
   def test_warns_when_no_stacks_match_the_given_names
     out = D::Fakes::Output.new
 
-    result = destroy(client, out, stack_name: "DoesNotExist", options: unattended)
+    result = destroy(client, out, stack: cdk_stack(name: "DoesNotExist"), options: unattended)
 
     assert_equal :no_changes, result.outcome
     assert_equal 0, result.exit_code

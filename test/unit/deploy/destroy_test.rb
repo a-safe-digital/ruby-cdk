@@ -114,7 +114,7 @@ class DeployDestroyTest < Minitest::Test
 
     result = destroy(client, out, options: D::DeployOptions.new)
 
-    assert_equal :deployed, result.outcome
+    assert_equal :destroyed, result.outcome
     assert_equal 0, result.exit_code
     assert_equal STACK_ID, result.stack_id
     assert_equal [ STACK_ID ], client.calls_to(:delete_stack).first.args, "it is deleted by its ID"
@@ -128,7 +128,7 @@ class DeployDestroyTest < Minitest::Test
 
     result = destroy(client, out, options: unattended)
 
-    assert_equal :deployed, result.outcome
+    assert_equal :destroyed, result.outcome
     assert_empty out.confirmations
     assert_equal 1, out.said(:retained).length, "what will be kept is still said"
   end
@@ -140,7 +140,7 @@ class DeployDestroyTest < Minitest::Test
 
       result = destroy(client, options: unattended)
 
-      assert_equal :deployed, result.outcome, status
+      assert_equal :destroyed, result.outcome, status
       assert_equal "DELETE_COMPLETE", client.stack_record("blog").status
     end
   end

@@ -326,15 +326,20 @@ class CdkCliDeployStackTest < Minitest::Test
   # test('deploy not skipped if template did not change and --force is applied')
   #
   # The origin's harness leaves the deployed template different, so its
-  # assertion holds either way; the name pins the intent, and the port deploys
-  # an unchanged stack with --force.
+  # assertion holds either way; here the deployed template is the same, and
+  # CloudFormation refuses the change set that would change nothing
+  # (fake-cloudformation.ts). The origin answers that refusal with a no-op and
+  # a warning about --force (deploy-stack.ts), which is what the port pins.
   def test_deploy_not_skipped_if_template_did_not_change_and_force_is_applied
     given_no_updates_are_to_be_performed(client)
+    out = D::Fakes::Output.new
 
-    result = deploy(client, body: target_template, options: unattended(force: true))
+    result = deploy(client, out, body: target_template, options: unattended(force: true))
 
-    assert_equal :deployed, result.outcome
-    assert_equal 1, client.calls_to(:execute_change_set).length
+    assert_equal :no_changes, result.outcome
+    assert_equal 0, result.exit_code
+    assert out.announcements.any? { |text| text.include?("--force was given") }
+    assert_empty client.calls_to(:execute_change_set)
   end
 
   # test('deploy is skipped if template and tags did not change')
@@ -360,14 +365,19 @@ class CdkCliDeployStackTest < Minitest::Test
 
     assert_equal :deployed, result.outcome
     assert_equal [ { key: "Key", value: "NewValue" } ], client.kwargs_of(:create_change_set).first[:tags]
-    assert_equal 1, client.calls_to(:describe_change_set).length
+    # Two describes: the change set of the same name that was deleted is
+    # waited for first, as the origin's cleanupOldChangeset waits for it.
+    assert_equal 2, client.calls_to(:describe_change_set).length
     assert_equal 1, client.calls_to(:execute_change_set).length
   end
 
   # test('deployStack reports no change if describeChangeSet returns an error that indicates no change')
   def test_deploy_stack_reports_no_change_if_describe_change_set_returns_an_error_that_indicates_no_change
     given_stack_exists(client)
-    client.on(:describe_change_set, described(status: "FAILED", status_reason: "The submitted information didn't contain changes."))
+    # The first describe answers the wait for the older change set of the same
+    # name; the second describes the new one.
+    client.on(:describe_change_set, described(status: "DELETE_COMPLETE"),
+      described(status: "FAILED", status_reason: "The submitted information didn't contain changes."))
 
     result = deploy(client, body: target_template, options: unattended)
 
@@ -499,7 +509,10 @@ class CdkCliDeployStackTest < Minitest::Test
   # left, the second the empty one, as in the origin.
   def test_empty_change_set_is_deleted_if_execute_is_given
     given_no_updates_are_to_be_performed(client)
-    client.on(:describe_change_set, described(status: "FAILED", status_reason: "The submitted information didn't contain changes."))
+    # The first describe answers the wait for the older change set of the same
+    # name; the second describes the new one.
+    client.on(:describe_change_set, described(status: "DELETE_COMPLETE"),
+      described(status: "FAILED", status_reason: "The submitted information didn't contain changes."))
 
     deploy(client, body: target_template, options: unattended(force: true))
 
@@ -617,29 +630,34 @@ class CdkCliDeployStackTest < Minitest::Test
   # the row fails here. The engine is wrong or the contract is; nothing in
   # section 21 records the difference.
   #
-  # The rows refused by both expect StackNeedsRepair (exit 1) here where the
-  # origin answers 'failpaused-need-rollback-first': the refusal itself is
-  # what the port holds to.
+  # The rows on a failed state are refused here for the state itself
+  # (architecture section 9: a rollback waiting to be continued), which is the
+  # deploy-onto-failed-states difference recorded in section 21; the CDK
+  # refuses them as a paused fail state. The UPDATE_COMPLETE row is refused by
+  # the replacement guard, the CDK's 'replacement-requires-rollback': the
+  # origin's answer, at this engine's seam.
   NO_ROLLBACK_AND_REPLACEMENT = [
     # [ stack status, rollback?, replacement?, what the CDK answers ]
-    [ "UPDATE_FAILED", false, false, :deploys ],
-    [ "UPDATE_FAILED", false, true, :refused ],
-    [ "UPDATE_FAILED", true, true, :refused ],
-    [ "UPDATE_FAILED", true, false, :refused ],
-    [ "UPDATE_COMPLETE", false, true, :refused ]
+    [ "UPDATE_FAILED", false, false, :deploys, D::StackNeedsRepair ],
+    [ "UPDATE_FAILED", false, true, :refused, D::StackNeedsRepair ],
+    [ "UPDATE_FAILED", true, true, :refused, D::StackNeedsRepair ],
+    [ "UPDATE_FAILED", true, false, :refused, D::StackNeedsRepair ],
+    [ "UPDATE_COMPLETE", false, true, :refused, D::ReplacementNeedsRollback ]
   ].freeze
 
   def test_no_rollback_and_replacement_is_disadvised
-    NO_ROLLBACK_AND_REPLACEMENT.each do |status, rollback, replacement, cdk_answer|
+    NO_ROLLBACK_AND_REPLACEMENT.each do |status, rollback, replacement, cdk_answer, expected|
       client = D::Fakes::CfnClient.new
       client.stack(STACK_NAME, status: status, template: start_template)
-      client.on(:describe_change_set, described(changes: [
+      # The first describe answers the wait for the older change set of the
+      # same name; the second describes the new one.
+      client.on(:describe_change_set, described(status: "DELETE_COMPLETE"), described(changes: [
         change(action: "Modify", logical_id: "MyResource", replacement: replacement ? "True" : "False")
       ]))
       # forceDeployment bypasses the origin's skip rule; the port does the same.
       options = unattended(force: true, no_rollback: !rollback)
 
-      error = assert_raises(D::StackNeedsRepair,
+      error = assert_raises(expected,
         "#{status} rollback=#{rollback} replacement=#{replacement} (the CDK answers #{cdk_answer})") do
         deploy(client, body: target_template, options: options)
       end
@@ -668,11 +686,17 @@ class CdkCliDeployStackTest < Minitest::Test
   # test('does not return changeSet when change set is empty')
   def test_does_not_return_change_set_when_change_set_is_empty
     given_no_updates_are_to_be_performed(client)
-    client.on(:describe_change_set, described(status: "FAILED", status_reason: "The submitted information didn't contain changes."))
+    # The first describe answers the wait for the older change set of the same
+    # name; the second describes the new one.
+    client.on(:describe_change_set, described(status: "DELETE_COMPLETE"),
+      described(status: "FAILED", status_reason: "The submitted information didn't contain changes."))
 
     result = deploy(client, body: target_template, options: unattended(no_execute: true))
 
-    assert_equal :no_changes, result.outcome
+    # Even an empty change set was left unexecuted, which is what the engine's
+    # outcome says; the origin answers the same noOp as for a skipped deploy.
+    assert_equal :not_executed, result.outcome
+    assert_equal 0, result.exit_code
     assert_empty result.changes
     assert_empty client.calls_to(:execute_change_set)
   end

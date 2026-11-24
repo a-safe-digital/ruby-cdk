@@ -133,9 +133,10 @@ class ContractTest < Minitest::Test
   def test_deployer
     %i[client store output].each { |name| assert_parameter RubyCdk::Deploy::Deployer, :initialize, name, :keyreq }
     %i[stack template identity options].each { |name| assert_parameter RubyCdk::Deploy::Deployer, :deploy, name, :keyreq }
-    %i[stack_name identity options].each { |name| assert_parameter RubyCdk::Deploy::Deployer, :destroy, name, :keyreq }
+    # The stack, not its name: the account rule holds on the destructive path too.
+    %i[stack identity options].each { |name| assert_parameter RubyCdk::Deploy::Deployer, :destroy, name, :keyreq }
 
-    %i[deployed no_changes not_executed rejected failed].each do |outcome|
+    %i[deployed no_changes not_executed rejected failed destroyed].each do |outcome|
       assert_includes RubyCdk::Deploy::DeployResult::OUTCOMES, outcome
     end
     assert_raises(ArgumentError) { RubyCdk::Deploy::DeployResult.new(stack_name: "s", outcome: :nonsense) }

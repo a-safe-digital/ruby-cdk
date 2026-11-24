@@ -15,7 +15,7 @@ class DeployStatesTest < Minitest::Test
     review: %w[REVIEW_IN_PROGRESS],
     stable: %w[CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE IMPORT_COMPLETE IMPORT_ROLLBACK_COMPLETE],
     rollback_complete: %w[ROLLBACK_COMPLETE ROLLBACK_FAILED],
-    rollback_failed: %w[UPDATE_ROLLBACK_FAILED CREATE_FAILED UPDATE_FAILED DELETE_FAILED],
+    rollback_failed: %w[UPDATE_ROLLBACK_FAILED CREATE_FAILED UPDATE_FAILED DELETE_FAILED IMPORT_ROLLBACK_FAILED],
     busy: %w[
       CREATE_IN_PROGRESS ROLLBACK_IN_PROGRESS DELETE_IN_PROGRESS UPDATE_IN_PROGRESS UPDATE_COMPLETE_CLEANUP_IN_PROGRESS
       UPDATE_ROLLBACK_IN_PROGRESS UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS IMPORT_IN_PROGRESS
@@ -38,9 +38,9 @@ class DeployStatesTest < Minitest::Test
     end
   end
 
-  def test_the_table_covers_every_status_the_sdk_documents_but_one
+  def test_the_table_covers_every_status_the_sdk_documents
     placed = TABLE.values.flatten
-    assert_equal %w[IMPORT_ROLLBACK_FAILED], DOCUMENTED - placed
+    assert_equal [], DOCUMENTED - placed, "every status DescribeStacks documents is placed"
     assert_equal [], placed - DOCUMENTED
   end
 
@@ -55,12 +55,6 @@ class DeployStatesTest < Minitest::Test
     assert_match(/Nothing was changed/, error.message)
     assert_equal 1, Deploy.exit_code_for(error)
     assert_nil Deploy::StackStatus.state("UPDATE_ROLLBACK_FAILED_COMPLETELY")
-  end
-
-  # A status the table does not place, although the SDK lists it: the table is
-  # binding, and this records the gap rather than papering over it.
-  def test_import_rollback_failed_is_refused_as_unknown
-    assert_raises(Deploy::UnknownStackStatus) { Deploy::States.classify("IMPORT_ROLLBACK_FAILED") }
   end
 
   def test_anything_that_ends_in_in_progress_is_busy_even_one_nobody_has_seen
@@ -91,6 +85,8 @@ class DeployStatesTest < Minitest::Test
   def test_the_way_out_names_the_console_path_aws_documents
     assert_match(/Continue update rollback/, Deploy::States.repair_path("UPDATE_ROLLBACK_FAILED"))
     assert_match(/Stack actions/, Deploy::States.repair_path("UPDATE_ROLLBACK_FAILED"))
+    assert_match(/Continue update rollback/, Deploy::States.repair_path("IMPORT_ROLLBACK_FAILED"),
+      "an import whose update fails rolls back like an update")
     assert_match(/Roll back/, Deploy::States.repair_path("CREATE_FAILED"))
     assert_match(/the rollback deletes it/, Deploy::States.repair_path("CREATE_FAILED"))
     assert_match(/Retry delete/, Deploy::States.repair_path("DELETE_FAILED"))
