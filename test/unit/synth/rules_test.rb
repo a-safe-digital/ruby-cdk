@@ -4,14 +4,21 @@ require "test_helper"
 require "support/core_helpers"
 
 # The two rules that live with the pipeline: V2 on logical IDs and V13 on the stack name.
+#
+# A parameter, an output, a mapping, a condition and a resource are refused
+# where they are declared with a logical ID CloudFormation cannot take (the
+# stack's and the resource's tests hold that), so what reaches V2 is what a
+# normalizer wrote. The bad ids here are written by one.
 class SynthRulesTest < CoreHelpers::TestCase
   def setup
     super
     @removed_rules = []
+    @registered_normalizers = []
   end
 
   def teardown
     @removed_rules.each { |validator| RubyCdk::Synth.register_validator(validator) }
+    @registered_normalizers.each { |normalizer| RubyCdk::Synth.unregister_normalizer(normalizer) }
     super
   end
 
@@ -19,14 +26,19 @@ class SynthRulesTest < CoreHelpers::TestCase
 
   def test_a_logical_id_holds_letters_and_digits_only_in_every_section
     stack = build_stack do
-      parameter("bad_param", type: "String")
-      mapping("Bad-Map", "a" => { "b" => "c" })
-      condition("Bad_Condition", Fn.equals("a", "a"))
-      resource("my_table", "AWS::DynamoDB::Table")
-      output("bad_output", value: 1)
+      parameter("GoodParam", type: "String")
+      mapping("GoodMap", "a" => { "b" => "c" })
+      condition("GoodCondition", Fn.equals("a", "a"))
       resource("Good1", "AWS::DynamoDB::Table")
       output("Good2", value: 1)
     end
+    writes_bad_ids(
+      "Parameters" => { "bad_param" => { "Type" => "String" } },
+      "Mappings" => { "Bad-Map" => { "a" => { "b" => "c" } } },
+      "Conditions" => { "Bad_Condition" => { "Fn::Equals" => [ "a", "a" ] } },
+      "Resources" => { "my_table" => { "Type" => "AWS::DynamoDB::Table" } },
+      "Outputs" => { "bad_output" => { "Value" => 1 } }
+    )
 
     error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
 
@@ -37,6 +49,54 @@ class SynthRulesTest < CoreHelpers::TestCase
     assert_equal "the logical ID \"my_table\" must hold letters and digits only", error.issues[3].message
     assert_equal "CloudFormation takes no \"_\", \"-\" or \".\" in a logical ID: write MyTable", error.issues[3].hint
     assert_equal "V2 Resources.my_table: the logical ID \"my_table\" must hold letters and digits only", error.message.lines[3].chomp
+  end
+
+  def test_an_element_with_a_logical_id_cloudformation_cannot_take_is_refused_where_it_is_declared
+    stack = build_stack { parameter("Stage", type: "String") }
+    fault = 'the logical ID "table_name" must hold letters and digits only. ' \
+      'CloudFormation takes no "_", "-" or "." in a logical ID: write TableName'
+
+    [
+      [ "the parameter \"table_name\"", -> { stack.parameter("table_name", type: "String") } ],
+      [ "the output \"table_name\"", -> { stack.output("table_name", value: 1) } ],
+      [ "the mapping \"table_name\"", -> { stack.mapping("table_name", "a" => { "b" => "c" }) } ],
+      [ "the condition \"table_name\"", -> { stack.condition("table_name", Fn.equals("a", "a")) } ]
+    ].each do |kind, declare|
+      error = assert_raises(RubyCdk::UsageError, kind) { declare.call }
+
+      assert_equal "App/blog: #{kind}: #{fault}", error.message, kind
+    end
+    assert_equal %w[ Stage ], stack.parameters.keys
+    assert_empty stack.outputs
+    assert_empty stack.mappings
+    assert_empty stack.conditions
+  end
+
+  def test_an_id_that_is_not_even_a_construct_id_is_refused_in_the_construct_s_words
+    stack = build_stack
+
+    error = assert_raises(RubyCdk::UsageError) { stack.output("table_name!", value: 1) }
+
+    assert_equal 'The id "table_name!" under App/blog is not valid: an id holds letters, digits, "_" and "-", and at least one of them',
+      error.message
+  end
+
+  def test_a_logical_id_longer_than_255_characters_is_refused_where_it_is_declared
+    # One id alone is refused as a construct id; the logical ID of a resource is
+    # the ids above it joined, and that is what can outgrow 255.
+    stack = build_stack
+    long = "T" * 256
+
+    error = assert_raises(RubyCdk::UsageError) { stack.output(long, value: 1) }
+
+    assert_equal "The id \"#{long[0, 32]}...\" under App/blog is longer than 255 characters", error.message
+
+    error = assert_raises(RubyCdk::UsageError) do
+      stack_class { RubyCdk::Construct.new(self, "T" * 128).resource("T" * 128, "AWS::SNS::Topic") }.new(build_app(env: TEST_ENV), "blog")
+    end
+
+    assert_equal "resource \"#{'T' * 128}\" in App/blog/#{'T' * 128}: the logical ID \"#{'T' * 32}...\" is longer than 255 characters",
+      error.message
   end
 
   def test_a_logical_id_names_one_thing_in_the_whole_stack
@@ -80,10 +140,16 @@ class SynthRulesTest < CoreHelpers::TestCase
   end
 
   def test_v2_fails_only_while_the_rule_is_registered
-    stack = build_stack { resource("my_table", "AWS::DynamoDB::Table") }
+    stack = build_stack { resource("Table", "AWS::DynamoDB::Table") }
+    writes_bad_ids("Resources" => { "my_table" => { "Type" => "AWS::DynamoDB::Table" } })
+
+    error = assert_raises(RubyCdk::ValidationError) { stack.to_template }
+
+    assert_equal [ "V2" ], error.issues.map(&:rule)
+
     without_rule(RubyCdk::Synth::Rules::LogicalIds)
 
-    assert_equal [ "my_table" ], stack.to_template["Resources"].keys
+    assert_equal %w[ my_table Table ], stack.to_template["Resources"].keys
   end
 
   # --- V13
@@ -140,5 +206,20 @@ class SynthRulesTest < CoreHelpers::TestCase
       RubyCdk::Synth.unregister_validator(validator)
       @removed_rules << validator
     end
+  end
+
+  # Registers a normalizer that writes additions, a Hash of section to section,
+  # into the template; teardown takes it out. This is how a logical ID that no
+  # declaration can produce reaches V2.
+  def writes_bad_ids(additions)
+    normalizer = lambda { |context|
+      additions.each do |section, entries|
+        written = context.template[section] || {}
+        context.template[section] = entries.merge(written)
+      end
+      context.template
+    }
+    RubyCdk::Synth.register_normalizer(normalizer)
+    @registered_normalizers << normalizer
   end
 end

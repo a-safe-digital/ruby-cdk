@@ -5,12 +5,19 @@ require "digest"
 require "support/core_helpers"
 
 # What synthesis writes (architecture §12): manifest.json, one file per stack, and nothing when anything is wrong.
+#
+# The umbrella registers the two facts of the other components: which model was
+# consulted, and the hashes of a stack's assets. Tests that register their own
+# values get the umbrella's back in the teardown, so the rest of the suite runs
+# with what `require "ruby-cdk"` set up.
 class SynthManifestTest < CoreHelpers::TestCase
   Synth = RubyCdk::Synth
 
   def teardown
-    Synth.unregister_manifest_fact(Synth::Manifest::SCHEMA_VERSION_KEY)
-    Synth.unregister_entry_fact(Synth::Manifest::ASSETS_KEY)
+    Synth.register_manifest_fact(Synth::Manifest::SCHEMA_VERSION_KEY) { RubyCdk::Schema.schema_version }
+    Synth.register_entry_fact(Synth::Manifest::ASSETS_KEY) do |stack, _template|
+      stack.asset_hashes.map { |hash| "sha256:#{hash}" }
+    end
     Synth.unregister_manifest_fact("generated_by")
     super
   end
@@ -37,7 +44,7 @@ class SynthManifestTest < CoreHelpers::TestCase
     assert_equal <<~JSON, manifest.bytes
       {
         "ruby_cdk_version": "#{RubyCdk::VERSION}",
-        "schema_version": null,
+        "schema_version": #{RubyCdk::Schema.schema_version.to_s.inspect},
         "stacks": [
           {
             "name": "demo-net",
@@ -137,28 +144,28 @@ class SynthManifestTest < CoreHelpers::TestCase
   def test_an_app_with_no_stack_writes_a_manifest_with_no_entry
     manifest = build_app.synth
 
-    assert_equal({ "ruby_cdk_version" => RubyCdk::VERSION, "schema_version" => nil, "stacks" => [] }, manifest.to_h)
+    assert_equal({ "ruby_cdk_version" => RubyCdk::VERSION, "schema_version" => RubyCdk::Schema.schema_version, "stacks" => [] }, manifest.to_h)
     assert_equal [ "manifest.json" ], Dir.children(manifest.out_dir)
   end
 
   def test_nothing_is_written_when_any_stack_is_wrong_and_every_issue_of_every_stack_is_reported
     app = three_stacks
-    stack_class { resource("my_table", "AWS::DynamoDB::Table") }.new(app, "broken")
-    stack_class { output("bad_output", value: Time.now) }.new(app, "worse")
+    stack_class { resource("Thing", "AWS::SNS::Topic", DisplayName: Object.new) }.new(app, "broken")
+    stack_class { output("Bad", value: Time.now) }.new(app, "worse")
 
     error = assert_raises(RubyCdk::ValidationError) { app.synth }
 
-    assert_equal 3, error.issues.length
-    assert_equal [ "demo-broken:Resources.my_table", "demo-worse:Outputs.bad_output.Value", "demo-worse:Outputs.bad_output" ],
+    assert_equal 2, error.issues.length
+    assert_equal [ "demo-broken:Resources.Thing.Properties.DisplayName", "demo-worse:Outputs.Bad.Value" ],
       error.issues.map(&:path)
-    assert_match(/\AV2 demo-broken:Resources\.my_table: /, error.message)
+    assert_match(/\AV0 demo-broken:Resources\.Thing\.Properties\.DisplayName: /, error.message)
     refute File.exist?(app.out_dir), "synth wrote something although a stack is wrong"
 
-    alone = stack_class { resource("my_table", "AWS::DynamoDB::Table") }.new(build_app, "alone")
+    alone = build_stack { resource("Thing", "AWS::SNS::Topic", DisplayName: Object.new) }
 
     error = assert_raises(RubyCdk::ValidationError) { alone.to_template }
 
-    assert_match(/\AV2 Resources\.my_table: /, error.message)
+    assert_match(/\AV0 Resources\.Thing\.Properties\.DisplayName: /, error.message)
     refute File.exist?(alone.app.out_dir)
   end
 
@@ -174,8 +181,8 @@ class SynthManifestTest < CoreHelpers::TestCase
     refute File.exist?(app.out_dir)
   end
 
-  def test_what_other_components_know_is_written_only_when_they_registered_it
-    assert_nil build_app.synth.to_h["schema_version"]
+  def test_what_other_components_register_is_what_the_manifest_writes
+    assert_equal RubyCdk::Schema.schema_version, build_app.synth.to_h["schema_version"]
 
     Synth.register_manifest_fact(Synth::Manifest::SCHEMA_VERSION_KEY) { "provider-schema-2026-11-23 / resource-spec-2026-11-19" }
     Synth.register_entry_fact(Synth::Manifest::ASSETS_KEY) { |stack, template| stack.id == "a" ? [ "sha256:#{template["Resources"].keys.length}" ] : [] }

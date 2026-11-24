@@ -163,19 +163,19 @@ module RubyCdk
     # addStackDependency ("cyclic reference", core/lib/stack.ts:1044): walking
     # the other stack's dependencies finds this stack before the deploy order
     # would.
-    def add_dependency(stack)
-      unless stack.is_a?(Stack)
-        raise UsageError, "#{path}: add_dependency takes a Stack, got #{stack.inspect}"
+    def add_dependency(other)
+      unless other.is_a?(Stack)
+        raise UsageError, "#{path}: add_dependency takes a Stack, got #{other.inspect}"
       end
-      raise UsageError, "#{path}: a stack cannot depend on itself" if stack.equal?(self)
+      raise UsageError, "#{path}: a stack cannot depend on itself" if other.equal?(self)
 
-      reached = reaches?(stack, self)
+      reached = reaches?(other, self)
       if reached
-        raise UsageError, "#{path}: depending on #{stack.stack_name} makes a cyclic reference: " \
-          "#{stack.stack_name} already depends on #{stack_name}, directly or through the stacks between them"
+        raise UsageError, "#{path}: depending on #{other.stack_name} makes a cyclic reference: " \
+          "#{other.stack_name} already depends on #{stack_name}, directly or through the stacks between them"
       end
 
-      @dependencies << stack unless @dependencies.include?(stack)
+      @dependencies << other unless @dependencies.include?(other)
       self
     end
 

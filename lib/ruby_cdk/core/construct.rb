@@ -9,13 +9,19 @@ module RubyCdk
   # its constructor returns.
   class Construct
     # So that `Fn.ref` resolves inside any construct or Stack subclass.
+    #
+    # A block given to Stack.new is evaluated in the stack's context, but its
+    # constants are looked up where the block was written, so `Fn` is not in
+    # scope there. The idiom is `Fn = RubyCdk::Fn` at the top of the app file,
+    # the way a Ruby file imports a class, and the examples show it.
     Fn = RubyCdk::Fn
 
     # Letters, digits, underscore and hyphen. Logical IDs are narrower: alphanumeric only.
     ID_PATTERN = /\A[A-Za-z0-9_-]+\z/
 
-    # CloudFormation limits a logical name to 255 characters.
-    MAX_ID_LENGTH = 255
+    # The longest an id can be. It is CloudFormation's limit for a logical name:
+    # an id is a logical ID when it sits in a Stack, and Core::Ids owns the number.
+    MAX_ID_LENGTH = Core::Ids::MAX_LOGICAL_ID_LENGTH
 
     attr_reader :scope, :id, :path
 

@@ -200,6 +200,7 @@ class SynthSerializerTest < CoreHelpers::TestCase
     assert_equal <<~JSON, Serializer.call(template)
       {
         "AWSTemplateFormatVersion": "2010-09-09",
+        "Transform": "AWS::Serverless-2016-10-31",
         "Description": "D",
         "Parameters": {
           "P": {
@@ -238,8 +239,7 @@ class SynthSerializerTest < CoreHelpers::TestCase
         },
         "Metadata": {
           "A": 1
-        },
-        "Transform": "AWS::Serverless-2016-10-31"
+        }
       }
     JSON
   end
@@ -270,6 +270,24 @@ class SynthSerializerTest < CoreHelpers::TestCase
 
     assert_equal "{\n  \"ruby_cdk_version\": \"1.2.3\",\n  \"stacks\": [\n    {\n      \"name\": \"blog\"\n    }\n  ]\n}\n", Serializer.render(manifest)
     assert_equal "{}\n", Serializer.render({})
+  end
+
+  def test_the_transform_section_sits_between_the_format_version_and_the_description_one_transform_as_a_string_several_as_an_array
+    one = Serializer.call({ "AWSTemplateFormatVersion" => "2010-09-09", "Transform" => "AWS::LanguageExtensions", "Resources" => { "R" => { "Type" => "T" } } })
+    both = Serializer.call({ "Transform" => [ "AWS::Serverless-2016-10-31", "AWS::LanguageExtensions" ], "Description" => "D", "Resources" => {} })
+
+    assert_equal <<~JSON, one
+      {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Transform": "AWS::LanguageExtensions",
+        "Resources": {
+          "R": {
+            "Type": "T"
+          }
+        }
+      }
+    JSON
+    assert_equal %w[Transform Description], JSON.parse(both).keys
   end
 
   def test_a_template_that_is_not_plain_data_is_an_error_that_says_where_and_not_a_wrong_file

@@ -164,20 +164,23 @@ class SynthPipelineTest < CoreHelpers::TestCase
 
   def test_run_never_raises_and_synthesize_raises_once_with_every_issue
     stack = build_stack do
-      resource("my_table", "AWS::DynamoDB::Table", DisplayName: Object.new)
-      output("bad_output", value: 1)
+      resource("Thing", "AWS::DynamoDB::Table", DisplayName: Object.new)
+      output("Count", value: 1)
     end
+    normalizer = writes_bad_ids("Resources" => { "my_table" => { "Type" => "AWS::DynamoDB::Table" } })
 
     result = Synth.run(stack)
 
-    assert_equal %w[ V0 V2 V2 ], result.issues.map(&:rule)
+    assert_equal %w[ V0 V2 ], result.issues.map(&:rule)
+    assert_equal [ "Resources.Thing.Properties.DisplayName", "Resources.my_table" ], result.issues.map(&:path)
     assert_kind_of Hash, result.template
     assert_kind_of String, result.bytes
 
     error = assert_raises(RubyCdk::ValidationError) { Synth.synthesize(stack) }
 
-    assert_equal 3, error.issues.length
+    assert_equal 2, error.issues.length
 
+    Synth.unregister_normalizer(normalizer)
     clean = Synth.synthesize(build_stack { resource("Table", "AWS::DynamoDB::Table") })
 
     assert_empty clean.issues
@@ -220,7 +223,10 @@ class SynthPipelineTest < CoreHelpers::TestCase
     assert_includes Synth.validators.map(&:class), Synth::Rules::LogicalIds
     assert_includes Synth.validators.map(&:class), Synth::Rules::StackName
     assert_empty Synth.normalizers
-    assert_empty Synth.manifest_fact_keys
+    # The umbrella registers the schema's version as a manifest fact, and the
+    # hashes of a stack's assets as an entry fact.
+    assert_equal [ Synth::Manifest::SCHEMA_VERSION_KEY ], Synth.manifest_fact_keys
+    assert_equal [], Synth.entry_fact(Synth::Manifest::ASSETS_KEY, Struct.new(:asset_hashes).new([]), {})
   end
 
   def test_unregister_takes_a_normalizer_or_a_validator_out
@@ -283,6 +289,22 @@ class SynthPipelineTest < CoreHelpers::TestCase
     template = -> { Synth.run(build_stack { resource("Table", "AWS::DynamoDB::Table", TableName: unique_name("data")) }).bytes }
 
     assert_equal template.call, Dir.chdir(dir) { template.call }
+  end
+
+  private
+
+  # Registers a normalizer that writes additions, a Hash of section to
+  # section, into the template; teardown takes it out.
+  def writes_bad_ids(additions)
+    normalizer = lambda { |context|
+      additions.each do |section, entries|
+        written = context.template[section] || {}
+        context.template[section] = entries.merge(written)
+      end
+      context.template
+    }
+    add_normalizer(normalizer)
+    normalizer
   end
 
   private
