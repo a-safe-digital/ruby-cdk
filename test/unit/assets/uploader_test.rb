@@ -68,6 +68,16 @@ class AssetsUploaderTest < Minitest::Test
     end
   end
 
+  # Answers something where the port promises a boolean.
+  class LyingStore < AssetsFakeObjectStore
+    attr_accessor :answer
+
+    def object_exists?(bucket, key, expected_owner:)
+      log(:object_exists?, bucket, key, expected_owner)
+      @answer
+    end
+  end
+
   def setup
     @dirs = []
     @asset = record_of("some_file", "FILE_CONTENTS")
@@ -208,6 +218,17 @@ class AssetsUploaderTest < Minitest::Test
 
     assert_match(/answered :nope.*neither :mine, :foreign nor :absent/, error.message)
     assert_equal %i[bucket_state], store.calls.map(&:name)
+  end
+
+  def test_an_object_exists_answer_that_is_not_true_is_taken_for_absent
+    [ "false", 0, nil ].each do |answer|
+      store = LyingStore.new(owner: OWNER).add_bucket(BUCKET)
+      store.answer = answer
+
+      assert_equal :uploaded, uploader_for(store).upload(@asset, bucket: BUCKET),
+        "object_exists? answered #{answer.inspect}"
+      assert_equal 1, store.calls_to(:put).size
+    end
   end
 
   # --- counts

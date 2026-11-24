@@ -23,8 +23,10 @@
 # - The mode kept is 0644 or 0755 from the manifest (architecture section
 #   21). The CDK keeps the whole mode of the file.
 # - 'rejects and cleans up when readFile fails' makes the file unreadable with
-#   chmod instead of mocking fs.readFile. There is no temporary file here, so
-#   "cleans up" checks that nothing was written.
+#   chmod instead of mocking fs.readFile, and expects the tool's
+#   AssetChangedError instead of a raw Errno, which the deploy would report as
+#   a bug. There is no temporary file here, so "cleans up" checks that nothing
+#   was written.
 # - 'md5 hash of a zip stays consistent across invocations' changes the
 #   modification times of the files between its two builds instead of waiting
 #   two seconds, and writes to two files: the original gives both the same
@@ -125,9 +127,10 @@ class AssetsZipperTest < Minitest::Test
     asset = record(src_dir)
     File.chmod(0o000, File.join(src_dir, "secret"))
 
-    error = assert_raises(Errno::EACCES) { zipper.write(asset, zip_file) }
+    error = assert_raises(RubyCdk::Assets::AssetChangedError) { zipper.write(asset, zip_file) }
 
-    assert_match(/Permission denied/i, error.message)
+    assert_match(/secret/, error.message)
+    assert_match(/cannot be read/, error.message)
     assert_equal [ "src" ], Dir.children(@staging)
   end
 
@@ -296,6 +299,7 @@ class AssetsZipperTest < Minitest::Test
     assert_equal %w[app.rb bin/run], entries.map { |entry| entry[:name].force_encoding(Encoding::UTF_8) }
     entries.each do |entry|
       assert_equal 3, entry[:host], "made on Unix"
+      assert_equal 52, entry[:version_made_by], "rubyzip's unicode_names must stay off: on, the making version says 63 and every byte moves"
       assert_equal 20, entry[:version_needed]
       assert_equal DEFLATE, entry[:method]
       assert_equal 0x0021, entry[:dos_date], "1980-01-01"

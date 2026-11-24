@@ -11,9 +11,10 @@ module RubyCdk
     # One directory of files on its way to the asset bucket: where the files
     # are, what was left out, and the identity both derive from.
     #
-    # The identity is the manifest hash (Hasher), and the object key is
-    # "<manifest hash>.zip". It is a value: two records of the same files are
-    # equal, wherever the files sit.
+    # The identity of an asset is the manifest hash (Hasher), and the object
+    # key is "<manifest hash>.zip". Equality is not identity: as a Data value,
+    # == compares every member, so two records of the same files in different
+    # directories are different records that share hash and key.
     Record = Data.define(:source_path, :exclude, :manifest, :manifest_hash)
 
     class Record

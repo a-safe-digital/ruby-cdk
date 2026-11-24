@@ -107,9 +107,14 @@ module RubyCdk
       end
 
       # The directory is read, and the zip built, only when it is needed.
+      #
+      # The port answers object_exists? with a boolean, and only `true` counts
+      # as present. Anything else is taken for absent and the object is put:
+      # the key is content-addressed, so a needless put is harmless and a
+      # wrong skip is not.
       def put_unless_present(record, bucket)
         key = record.key
-        return :skipped if @store.object_exists?(bucket, key, expected_owner: @owner)
+        return :skipped if @store.object_exists?(bucket, key, expected_owner: @owner) == true
 
         @store.put(bucket, key, body: Zipper.build(record), expected_owner: @owner)
         :uploaded

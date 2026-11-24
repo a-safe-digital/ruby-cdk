@@ -7,6 +7,10 @@
 # the repository: twelve mutations, each caught by the tests as they stood.
 # One of them, the compression level, survived at first, because no test
 # pinned level 6; the test was added before the file was committed.
+#
+# 2026-11-24: manifest_sort_removed added after review, on the fixture with
+# "lib.rb" beside "lib/a.txt", where the per-directory walk and the whole-path
+# sort disagree.
 
 Mutations.define("zipper/entry_time_is_now", "test/unit/assets/zipper_test.rb") do
   Mutations.swap_constant(RubyCdk::Assets::Zipper, :FIXED_TIME, Time.now)
@@ -40,6 +44,19 @@ Mutations.define("hasher/manifest_not_sorted", "test/unit/assets/hasher_test.rb"
   RubyCdk::Assets::Hasher.singleton_class.class_eval do
     alias_method :sorted_manifest, :manifest
     def manifest(source_path, exclude: []) = sorted_manifest(source_path, exclude: exclude).reverse
+  end
+end
+
+# The manifest's sort removed, not reversed: the per-directory walk is already
+# sorted inside every directory, so removing the whole-path sort only shows on
+# files like "lib.rb" and "lib/x.rb", where the two orders disagree.
+Mutations.define("hasher/manifest_sort_removed", "test/unit/assets/hasher_test.rb") do
+  Mutations.singleton(RubyCdk::Assets::Hasher) do
+    def manifest(source_path, exclude: [])
+      entries = []
+      walk(File.expand_path(usable(source_path)), "", DEFAULT_EXCLUDES + Array(exclude), entries)
+      entries.freeze
+    end
   end
 end
 
