@@ -90,6 +90,16 @@ class AssetsPublishTest < Minitest::Test
     assert_empty store.calls, "a caller that names the wrong account must not reach the store with it"
   end
 
+  def test_a_stack_without_an_env_uploads_nothing_and_reads_nothing_of_its_env
+    store = AssetsFakeObjectStore.new
+    without_env = RubyCdk::Stack.new(RubyCdk::App.new(out_dir: File.join(@dir, "out")), "Plain")
+
+    counts = RubyCdk::Assets.publish(without_env, store:, owner: ACCOUNT)
+
+    assert_equal({ uploaded: 0, skipped: 0 }, counts)
+    assert_empty store.calls
+  end
+
   private
 
   def stack
