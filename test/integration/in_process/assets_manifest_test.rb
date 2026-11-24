@@ -31,7 +31,8 @@ class AssetsManifestTest < Minitest::Test
 
     app = RubyCdk::App.new(env: TARGET, out_dir: File.join(@dir, "out")) do |app|
       RubyCdk::Stack.new(app, "Web") do
-        resource("Function", "AWS::Lambda::Function", properties: { "Code" => asset.zip(files).s3_location })
+        resource("Function", "AWS::Lambda::Function",
+          properties: { "Role" => "arn:aws:iam::111122223333:role/basic", "Code" => asset.zip(files).s3_location })
       end
       RubyCdk::Stack.new(app, "Plain")
     end
@@ -66,9 +67,12 @@ class AssetsManifestTest < Minitest::Test
 
     error = assert_raises(RubyCdk::ValidationError) { app.synth }
 
-    found = error.issues.to_h { |issue| [ issue.path, issue.message ] }
-    assert_match(/Cannot find asset directory/, found.fetch("Resources.Function.Properties.Code"))
-    assert_match(/Time is not a value/, found.fetch("Outputs.Built.Value"), "the other problem was not collected with it")
+    # Grouped by path: the V0 of the unreadable asset and the V6 the validator
+    # adds for the placeholder both sit at Code.
+    found = error.issues.group_by(&:path).transform_values { |issues| issues.map(&:message) }
+    assert_match(/Cannot find asset directory/, found.fetch("Resources.Function.Properties.Code").find { |m| m.include?("Cannot find asset") })
+    assert_match(/is written where an object is expected/, found.fetch("Resources.Function.Properties.Code").find { |m| m.include?("where an object") })
+    assert_match(/Time is not a value/, found.fetch("Outputs.Built.Value").first, "the other problem was not collected with it")
     refute Dir.exist?(app.out_dir), "something was written although synthesis failed"
   end
 end
