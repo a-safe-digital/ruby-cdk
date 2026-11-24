@@ -34,7 +34,7 @@ class CliDestroyTest < CliHelpers::TestCase
     aws = existing("hello")
     id = aws.cfn.stack_record("hello").id
 
-    result = cli("destroy", "--yes", aws:)
+    result = cli("destroy", *unattended, aws:)
 
     assert_equal 0, result.code
     assert_equal [ "hello" ], deleted(aws)
@@ -46,7 +46,7 @@ class CliDestroyTest < CliHelpers::TestCase
     write_app(ONE_STACK)
     aws = CliHelpers::FakeAws.new
 
-    result = cli("destroy", "--yes", "--json", aws:)
+    result = cli("destroy", "--json", *unattended, aws:)
 
     assert_equal 0, result.code
     assert_equal "no_changes", result.records.first["outcome"]
@@ -57,7 +57,7 @@ class CliDestroyTest < CliHelpers::TestCase
     write_app(NETWORK_THEN_WEB)
     aws = existing("network", "web")
 
-    result = cli("destroy", "--yes", aws:)
+    result = cli("destroy", *unattended, aws:)
 
     assert_equal 1, result.code
     assert_includes result.err.string, "Since this app includes more than a single stack, specify which stacks to use or specify `--all`\n" \
@@ -70,7 +70,7 @@ class CliDestroyTest < CliHelpers::TestCase
     write_app(NETWORK_THEN_WEB)
     aws = existing("network", "web")
 
-    assert_equal 0, cli("destroy", "--all", "--yes", aws:).code
+    assert_equal 0, cli("destroy", "--all", *unattended, aws:).code
     assert_equal %w[web network], deleted(aws)
   end
 
@@ -78,15 +78,15 @@ class CliDestroyTest < CliHelpers::TestCase
     write_app(NETWORK_THEN_WEB)
 
     with_dependents = existing("network", "web")
-    assert_equal 0, cli("destroy", "network", "--yes", aws: with_dependents).code
+    assert_equal 0, cli("destroy", "network", *unattended, aws: with_dependents).code
     assert_equal %w[web network], deleted(with_dependents)
 
     alone = existing("network", "web")
-    assert_equal 0, cli("destroy", "network", "--yes", "--exclusively", aws: alone).code
+    assert_equal 0, cli("destroy", "network", "--exclusively", *unattended, aws: alone).code
     assert_equal %w[network], deleted(alone)
 
     web_only = existing("network", "web")
-    assert_equal 0, cli("destroy", "web", "--yes", aws: web_only).code
+    assert_equal 0, cli("destroy", "web", *unattended, aws: web_only).code
     assert_equal %w[web], deleted(web_only), "destroying a stack does not touch what it depends on"
   end
 
@@ -95,13 +95,13 @@ class CliDestroyTest < CliHelpers::TestCase
     typo = existing("network", "web")
     both = existing("network", "web")
 
-    result = cli("destroy", "typo", "--yes", aws: typo)
+    result = cli("destroy", "typo", *unattended, aws: typo)
 
     assert_equal 1, result.code
     assert_includes result.err.string, "ruby-cdk: No stacks match the name(s) typo\n"
     assert_empty typo.client_calls
 
-    result = cli("destroy", "--all", "web", "--yes", aws: both)
+    result = cli("destroy", "--all", "web", *unattended, aws: both)
 
     assert_equal 1, result.code
     assert_includes result.err.string, "You must either specify a list of Stacks or the `--all` argument"
@@ -125,7 +125,7 @@ class CliDestroyTest < CliHelpers::TestCase
     write_app(ONE_STACK)
     aws = existing("hello")
 
-    assert_equal 0, cli("destroy", "--force", aws:).code
+    assert_equal 0, cli("destroy", "--force", "--account", CliHelpers::ACCOUNT, aws:).code
     assert_equal %w[hello], deleted(aws)
   end
 
@@ -133,7 +133,7 @@ class CliDestroyTest < CliHelpers::TestCase
     write_app(ONE_STACK)
     aws = existing("hello", template: KEEPING_TEMPLATE)
 
-    result = cli("destroy", "--yes", aws:)
+    result = cli("destroy", *unattended, aws:)
 
     assert_equal 0, result.code
     assert_includes result.err.string, "Kept after the stack is deleted (their DeletionPolicy says so):\n  Table  AWS::DynamoDB::Table  Retain\n"
@@ -143,7 +143,7 @@ class CliDestroyTest < CliHelpers::TestCase
     write_app(ONE_STACK)
     aws = existing("hello", termination_protection: true)
 
-    result = cli("destroy", "--yes", aws:)
+    result = cli("destroy", *unattended, aws:)
 
     assert_equal 1, result.code
     assert_includes result.err.string, "Stack hello has termination protection, so destroy refuses to delete it"
@@ -154,13 +154,13 @@ class CliDestroyTest < CliHelpers::TestCase
     write_app(NETWORK_THEN_WEB)
     aws = existing("network", "web")
 
-    result = cli("destroy", "--all", "--yes", "--json", aws:)
+    result = cli("destroy", "--all", "--json", *unattended, aws:)
 
     assert_equal 0, result.code
     assert_equal %w[web network], result.records.map { |record| record["name"] }
     assert_equal %w[name stack_id outcome exit_code changes outputs], result.records.first.keys
-    # The engine answers :deployed for a destroyed stack; the command line passes it on as it is.
-    assert_equal %w[deployed deployed], result.records.map { |record| record["outcome"] }
+    # The engine answers :destroyed for a destroyed stack; the command line passes it on as it is.
+    assert_equal %w[destroyed destroyed], result.records.map { |record| record["outcome"] }
     assert_equal [ 0, 0 ], result.records.map { |record| record["exit_code"] }
     assert_equal aws.cfn.stack_record("web").id, result.records.first["stack_id"]
   end
@@ -174,7 +174,7 @@ class CliDestroyTest < CliHelpers::TestCase
     aws.cfn.on(:stack_info, RubyCdk::Deploy::StackInfo.new(name: "hello", id: aws.cfn.stack_record("hello").id,
       status: "DELETE_FAILED", outputs: {}, termination_protection: false))
 
-    result = cli("destroy", "--yes", aws:)
+    result = cli("destroy", *unattended, aws:)
 
     assert_equal 5, result.code
     assert_includes result.err.string, "Stack hello could not be deleted: it ended in DELETE_FAILED."
