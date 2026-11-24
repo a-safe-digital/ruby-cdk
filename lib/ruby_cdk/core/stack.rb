@@ -1,60 +1,291 @@
 # frozen_string_literal: true
 
-require_relative "../assets/builder"
+require "digest"
+require_relative "construct"
+require_relative "elements"
+require_relative "stateful"
 
 module RubyCdk
   # One template. Built from a block evaluated in its own context, or from a
   # subclass that overrides build.
   class Stack < Construct
-    attr_reader :stack_name, :termination_protection
+    # CloudFormation's rule for a stack name: a letter, then letters, digits and hyphens.
+    NAME_PATTERN = /\A[A-Za-z][A-Za-z0-9-]*\z/
+    MAX_NAME_LENGTH = 128
+
+    # unique_name ends with this many hex characters of a SHA-256.
+    UNIQUE_NAME_HASH_LENGTH = 8
+
+    # The longest description a stack can carry: CloudFormation's limit, which
+    # the CDK refuses too (StackDescriptionTooLong).
+    MAX_DESCRIPTION_LENGTH = 512
+
+    # Shorter than this, no name is a valid S3 bucket name.
+    MIN_UNIQUE_NAME_LENGTH = 3
+
+    # The longest S3 bucket name: a unique_name with the default is always one.
+    DEFAULT_UNIQUE_NAME_MAX_LENGTH = 63
+
+    attr_reader :stack_name, :termination_protection, :app, :env, :description, :tags, :stateful_default
 
     def initialize(scope, id, env: nil, description: nil, tags: {}, stateful_default: nil, termination_protection: false, &block)
-      raise NotImplementedError, "Wave 1, track A"
+      unless scope.is_a?(App)
+        raise UsageError, "A Stack is created in an App: Stack.new(app, #{id.inspect}), got #{scope.inspect} as its scope"
+      end
+      if env && !env.is_a?(Env)
+        raise UsageError, "Stack #{id.inspect}: env must be a RubyCdk::Env, got #{env.inspect}"
+      end
+
+      super(scope, id)
+      @app = scope
+      @stack_name = "#{scope.stack_name_prefix}#{self.id}"
+      @env = env || scope.env
+      @description = description && described(description)
+      @tags = tag_hash(tags)
+      @stateful_default = Core::Stateful.validate_default!(stateful_default || scope.stateful_default)
+      @termination_protection = termination_protection ? true : false
+
+      @resources = []
+      @parameters = {}
+      @outputs = {}
+      @mappings = {}
+      @conditions = {}
+      @metadata = {}
+      @dependencies = []
+      @transforms = []
+
+      if block
+        instance_eval(&block)
+      else
+        build
+      end
+    end
+
+    # What a subclass defines instead of passing a block.
+    def build
     end
 
     def parameter(id, type:, default: nil, description: nil, allowed_values: nil, no_echo: false)
-      raise NotImplementedError, "Wave 1, track A"
+      declare(@parameters, id, "parameter") do |name|
+        Core::Parameter.new(self, name, type:, default:, description:, allowed_values:, no_echo:)
+      end
     end
 
     def output(id, value:, description: nil, export: false, condition: nil)
-      raise NotImplementedError, "Wave 1, track A"
+      name_of_condition = Core::Ids.condition_name(condition, "#{path}: output #{id.inspect}")
+      declare(@outputs, id, "output") do |name|
+        Core::Output.new(self, name, value:, description:, export:, condition: name_of_condition)
+      end
     end
 
     # An output whose Export name is export_name(id).
     def export(id, value:, description: nil)
-      raise NotImplementedError, "Wave 1, track A"
+      output(id, value:, description:, export: true)
     end
 
-    # "#{stack_name}-#{id}"
+    # "#{stack_name}-#{id}", the name under which `export(id, ...)` exports. id
+    # is the id of an output, so it follows the same rule as one.
     def export_name(id)
-      raise NotImplementedError, "Wave 1, track A"
+      name = Core::Ids.validate_id!(id, scope: self)
+      Core::Ids.validate_logical_id!(name, where: "#{path}: the output #{name.inspect} that export_name names")
+
+      "#{stack_name}-#{name}"
     end
 
     def mapping(id, hash)
-      raise NotImplementedError, "Wave 1, track A"
+      declare(@mappings, id, "mapping") { |name| Core::Mapping.new(self, name, hash) }
     end
 
     def condition(id, fn)
-      raise NotImplementedError, "Wave 1, track A"
+      declare(@conditions, id, "condition") { |name| Core::Condition.new(self, name, fn) }
     end
 
+    # Adds to the template's Metadata section.
+    def add_metadata(key, value)
+      @metadata[text(key, "metadata key")] = value
+      self
+    end
+
+    # Declares a transform for the template, written as its Transform section:
+    # a macro that Fn.transform calls, or AWS::Serverless-2016-10-31. Declaring
+    # one twice changes nothing.
+    #
+    # Synthesis calls it too: a value that CloudFormation accepts only under a
+    # transform gets that transform, as a stack in the CDK does.
+    def transform(name)
+      name = text(name, "transform")
+      @transforms << name unless @transforms.include?(name)
+      self
+    end
+
+    # Every transform the template declares, in the order they were declared.
+    def transforms
+      @transforms.dup.freeze
+    end
+
+    # The builder of the stack's file assets.
+    #
+    # Declared here because it is the tree's contract. The assets component
+    # implements it by reopening this class: core does not depend on assets.
     def asset
-      raise NotImplementedError, "Wave 1, track A"
+      raise NotImplementedError, "added by the assets component"
     end
 
-    # "#{stack_name}-#{suffix}-<8 hex>": stable across deploys, different in
-    # another account or region. Needs a concrete env.
-    def unique_name(suffix = nil, max_length: 64)
-      raise NotImplementedError, "Wave 1, track A"
+    # "#{stack_name}-#{suffix}-<hash>": lower-case letters, digits and hyphens.
+    # The hash is the first eight hex characters of SHA-256 over
+    # "account:region:stack_name:suffix", so the name is stable across deploys
+    # and different in another account or region. A name longer than
+    # max_length is shortened from the left. Needs a concrete env.
+    #
+    # With the default max_length the name is always a valid S3 bucket name:
+    # 3 to 63 characters, starting and ending with a letter or a digit. A
+    # service whose names may be longer takes a larger max_length.
+    def unique_name(suffix = nil, max_length: DEFAULT_UNIQUE_NAME_MAX_LENGTH)
+      unless env
+        raise UsageError, "#{path}: unique_name needs a concrete env. Give the Stack or its App " \
+          "env: RubyCdk::Env.new(account:, region:)"
+      end
+      unless max_length.is_a?(Integer) && max_length >= MIN_UNIQUE_NAME_LENGTH
+        raise UsageError, "#{path}: unique_name takes max_length: of at least #{MIN_UNIQUE_NAME_LENGTH}, got #{max_length.inspect}"
+      end
+
+      digest = Digest::SHA256.hexdigest("#{env.account}:#{env.region}:#{stack_name}:#{suffix}")[0, UNIQUE_NAME_HASH_LENGTH]
+      name = [ stack_name, suffix&.to_s ].compact.map { |part| name_word(part) }.reject(&:empty?).join("-")
+      name = "#{name.empty? ? "" : "#{name}-"}#{digest}"
+      # Shortened from the left: its last max_length characters.
+      name = name[name.length - max_length, max_length] || name if name.length > max_length
+      name.delete_prefix("-")
     end
 
-    def add_dependency(stack)
-      raise NotImplementedError, "Wave 1, track A"
+    # Makes this stack deploy after another one.
+    #
+    # A cycle is refused here and now, as the CDK refuses one at
+    # addStackDependency ("cyclic reference", core/lib/stack.ts:1044): walking
+    # the other stack's dependencies finds this stack before the deploy order
+    # would.
+    def add_dependency(other)
+      unless other.is_a?(Stack)
+        raise UsageError, "#{path}: add_dependency takes a Stack, got #{other.inspect}"
+      end
+      raise UsageError, "#{path}: a stack cannot depend on itself" if other.equal?(self)
+
+      reached = reaches?(other, self)
+      if reached
+        raise UsageError, "#{path}: depending on #{other.stack_name} makes a cyclic reference: " \
+          "#{other.stack_name} already depends on #{stack_name}, directly or through the stacks between them"
+      end
+
+      @dependencies << other unless @dependencies.include?(other)
+      self
     end
 
-    # Runs every phase except write and returns the template as a Hash.
+    # Runs every phase of architecture §5 except write and returns the template as a Hash.
+    #
+    # Declared here because it is the tree's contract. The synth component
+    # implements it by reopening this class: core does not depend on synth.
     def to_template
-      raise NotImplementedError, "Wave 1, track A"
+      raise NotImplementedError, "added by the synth component"
+    end
+
+    # The stacks this one depends on, in the order they were added.
+    def dependencies
+      @dependencies.dup.freeze
+    end
+
+    # What the stack declares, in declaration order. Synthesis reads them.
+    def resources
+      @resources.dup.freeze
+    end
+
+    def parameters
+      @parameters.dup.freeze
+    end
+
+    def outputs
+      @outputs.dup.freeze
+    end
+
+    def mappings
+      @mappings.dup.freeze
+    end
+
+    def conditions
+      @conditions.dup.freeze
+    end
+
+    def metadata
+      @metadata.dup.freeze
+    end
+
+    # Adds a resource to this stack's Resources, in creation order. The cfn
+    # component calls it when a resource is created in the tree.
+    def register_resource(resource)
+      @resources << resource
+      resource
+    end
+
+    private
+
+    # The stack's description: a String or a Symbol, at most MAX_DESCRIPTION_LENGTH
+    # characters, as the CDK refuses a longer one (StackDescriptionTooLong,
+    # core/lib/stack.ts).
+    def described(description)
+      text = text(description, "description")
+      if text.length > MAX_DESCRIPTION_LENGTH
+        raise UsageError, "#{path}: the description is #{text.length} characters, and at most " \
+          "#{MAX_DESCRIPTION_LENGTH} are taken (CloudFormation's limit, the CDK's StackDescriptionTooLong)"
+      end
+
+      text
+    end
+
+    # Whether walking target's dependencies, through the stacks between them,
+    # reaches the wanted stack.
+    def reaches?(target, wanted)
+      seen = [ self ]
+      frontier = [ target ]
+      until frontier.empty?
+        current = frontier.pop
+        return true if current.equal?(wanted)
+        next if seen.include?(current)
+
+        seen << current
+        frontier.concat(current.dependencies)
+      end
+      false
+    end
+
+    # Declares an element under its id. The id has to be a logical ID that
+    # CloudFormation takes, here and now: kind names it in the message.
+    def declare(collection, id, kind)
+      name = Core::Ids.validate_id!(id, scope: self)
+      Core::Ids.validate_logical_id!(name, where: "#{path}: the #{kind} #{name.inspect}")
+      if collection.key?(name)
+        raise UsageError, "#{path} declares #{name.inspect} twice"
+      end
+
+      collection[name] = yield name
+    end
+
+    # A String or a Symbol, as a String.
+    def text(value, what)
+      return value if value.is_a?(String)
+      return value.name if value.is_a?(Symbol)
+
+      raise UsageError, "#{path}: #{what} must be a String or a Symbol, got #{value.inspect}"
+    end
+
+    def tag_hash(tags)
+      unless tags.is_a?(Hash)
+        raise UsageError, "#{path}: tags takes a Hash, got #{tags.inspect}"
+      end
+
+      tags.to_h { |key, value| [ text(key, "tag key"), text(value, "tag value") ] }.freeze
+    end
+
+    # Lower-case letters and digits; every run of anything else becomes one hyphen.
+    def name_word(part)
+      part.downcase.gsub(/[^a-z0-9]+/, "-").delete_prefix("-").delete_suffix("-")
     end
   end
 end

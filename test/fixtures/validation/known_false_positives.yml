@@ -1,0 +1,8 @@
+# The exceptions the corpus check allows: one template, one rule, and why. The check
+# fails on anything not listed here and not a warning the rules were made to give
+# (V1 on a type the model does not know, V15 on a stateful type deleted with the
+# stack, as the header of test/unit/validation/corpus_test.rb explains).
+#
+# This file may only shrink. It starts empty: every template of the committed sample
+# is accepted with no error, and the only warnings are the designed ones.
+exceptions: []

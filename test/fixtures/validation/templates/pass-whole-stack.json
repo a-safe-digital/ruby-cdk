@@ -1,0 +1,48 @@
+{
+  "Parameters": {
+    "Stage": { "Type": "String", "Default": "test" }
+  },
+  "Mappings": {
+    "Region": {
+      "us-east-1": { "Ami": "ami-123" }
+    }
+  },
+  "Conditions": {
+    "IsProd": { "Fn::Equals": [{ "Ref": "Stage" }, "prod"] }
+  },
+  "Resources": {
+    "Role": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            { "Effect": "Allow", "Principal": { "Service": "ec2.amazonaws.com" }, "Action": "sts:AssumeRole" }
+          ]
+        }
+      }
+    },
+    "Instance": {
+      "Type": "AWS::EC2::Instance",
+      "Condition": "IsProd",
+      "DependsOn": "Role",
+      "Properties": {
+        "ImageId": { "Fn::FindInMap": ["Region", { "Ref": "AWS::Region" }, "Ami"] },
+        "InstanceType": "t3.small"
+      }
+    },
+    "Queue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {
+        "QueueName": { "Fn::Join": ["", [{ "Ref": "Stage" }, "-queue"]] },
+        "VisibilityTimeout": 60
+      }
+    }
+  },
+  "Outputs": {
+    "QueueUrl": {
+      "Value": { "Fn::GetAtt": ["Queue", "Arn"] },
+      "Export": { "Name": "QueueArn" }
+    }
+  }
+}

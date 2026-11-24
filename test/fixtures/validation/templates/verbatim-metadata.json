@@ -1,0 +1,14 @@
+{
+  "Resources": {
+    "Bucket": {
+      "Type": "AWS::S3::Bucket",
+      "Metadata": {
+        "Kept_As_Written": { "Nested.Key": 1 },
+        "aws:cloudformation:some": "thing"
+      },
+      "Properties": {
+        "BucketName": { "Fn::Sub": "${AWS::StackName}-bucket" }
+      }
+    }
+  }
+}

@@ -1,0 +1,431 @@
+{
+  "typeName": "AWS::Demo::Widget",
+  "description": "A fixture provider schema with one node of every shape the compiler maps.",
+  "additionalProperties": false,
+  "documentationUrl": "https://example.invalid/aws-demo-widget",
+  "required": [
+    "Name",
+    "Settings"
+  ],
+  "createOnlyProperties": [
+    "/properties/Name",
+    "/properties/Settings/ApiKey",
+    "/properties/Parts/*/Name"
+  ],
+  "conditionalCreateOnlyProperties": [
+    "/properties/Durable"
+  ],
+  "readOnlyProperties": [
+    "/properties/Arn",
+    "/properties/Status/Message",
+    "/properties/Audits/*/State",
+    "/properties/Audits/*/CheckedAt",
+    "/properties/Parts/*/Role"
+  ],
+  "properties": {
+    "Name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "Arn": {
+      "type": "string"
+    },
+    "Size": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "Offset": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "Ratio": {
+      "type": "number"
+    },
+    "Enabled": {
+      "type": "boolean"
+    },
+    "CreatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "Level": {
+      "$ref": "#/definitions/Level"
+    },
+    "Strictness": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/Strictness"
+        }
+      ]
+    },
+    "Tier": {
+      "type": "string",
+      "$ref": "#/definitions/Tier"
+    },
+    "Bucket": {
+      "type": "object",
+      "$ref": "#/definitions/BucketName"
+    },
+    "Policy": {
+      "type": [
+        "object",
+        "string"
+      ]
+    },
+    "Manifest": {},
+    "Freeform": {
+      "type": "object"
+    },
+    "EngineType": {
+      "type": "string",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Alpha",
+            "Beta"
+          ]
+        },
+        {
+          "pattern": "^[Aa]lpha$"
+        }
+      ]
+    },
+    "Sizes": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "enum": [
+          1,
+          2,
+          4
+        ]
+      }
+    },
+    "Zones": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "Matrix": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "Labels": {
+      "type": "object",
+      "patternProperties": {
+        ".+": {
+          "type": "string",
+          "maxLength": 20
+        }
+      }
+    },
+    "Requests": {
+      "type": "object",
+      "items": {
+        "$ref": "#/definitions/ParameterConstraints"
+      }
+    },
+    "Settings": {
+      "$ref": "#/definitions/Settings"
+    },
+    "Tags": {
+      "type": "array",
+      "insertionOrder": false,
+      "uniqueItems": false,
+      "items": {
+        "$ref": "#/definitions/Tag"
+      }
+    },
+    "InlineTags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Key": {
+            "type": "string"
+          },
+          "Value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "Key"
+        ]
+      }
+    },
+    "Route": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "S3": {
+              "$ref": "#/definitions/S3Location"
+            }
+          },
+          "required": [
+            "S3"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "Url"
+          ]
+        }
+      ]
+    },
+    "Store": {
+      "type": "object",
+      "properties": {
+        "Type": {
+          "type": "string"
+        },
+        "Table": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "Type"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "Table"
+          ]
+        }
+      ]
+    },
+    "Parameters": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Parameters"
+        },
+        {
+          "$ref": "#/definitions/ParameterMap"
+        }
+      ]
+    },
+    "Weight": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        }
+      ]
+    },
+    "Count": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        }
+      ]
+    },
+    "Durable": {
+      "type": "boolean"
+    },
+    "Replicas": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Replica"
+      }
+    },
+    "Parts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Part"
+      }
+    },
+    "Audits": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Audit"
+      }
+    },
+    "Status": {
+      "$ref": "#/definitions/Status"
+    }
+  },
+  "definitions": {
+    "Level": {
+      "enum": [
+        "Low",
+        "High"
+      ]
+    },
+    "Strictness": {
+      "type": "string",
+      "pattern": "^(strict|lax)$"
+    },
+    "Tier": {
+      "type": "string",
+      "enum": [
+        "Small",
+        "Large"
+      ]
+    },
+    "BucketName": {
+      "type": "string",
+      "pattern": "^[a-z0-9.-]{3,63}$"
+    },
+    "ParameterConstraints": {
+      "type": "object",
+      "properties": {
+        "Required": {
+          "type": "boolean"
+        },
+        "Cached": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Settings": {
+      "type": "object",
+      "properties": {
+        "ApiKey": {
+          "type": "string"
+        },
+        "Retries": {
+          "type": "integer",
+          "default": 3
+        },
+        "Window": {
+          "type": "object",
+          "properties": {
+            "From": {
+              "type": "string"
+            },
+            "To": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "Tag": {
+      "type": "object",
+      "properties": {
+        "Key": {
+          "type": "string"
+        },
+        "Value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "Key"
+      ]
+    },
+    "S3Location": {
+      "type": "object",
+      "properties": {
+        "Bucket": {
+          "type": "string"
+        },
+        "Key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "Bucket"
+      ]
+    },
+    "Parameters": {
+      "type": "object",
+      "properties": {
+        "Verbose": {
+          "type": "boolean"
+        },
+        "Name": {
+          "type": "string"
+        }
+      }
+    },
+    "ParameterMap": {
+      "type": "object",
+      "patternProperties": {
+        "^[A-Za-z0-9]+$": {
+          "type": "string"
+        }
+      }
+    },
+    "Replica": {
+      "type": "object",
+      "properties": {
+        "Region": {
+          "type": "string",
+          "enum": [
+            "eu-west-1",
+            "us-east-1"
+          ]
+        },
+        "Priority": {
+          "type": "integer"
+        }
+      }
+    },
+    "Part": {
+      "type": "object",
+      "properties": {
+        "Name": {
+          "type": "string"
+        },
+        "Role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "Name"
+      ]
+    },
+    "Audit": {
+      "type": "object",
+      "properties": {
+        "State": {
+          "type": "string"
+        },
+        "CheckedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "Status": {
+      "type": "object",
+      "properties": {
+        "Message": {
+          "type": "string"
+        },
+        "Code": {
+          "type": "integer"
+        }
+      }
+    },
+    "Unused": {
+      "type": "object",
+      "properties": {
+        "Never": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

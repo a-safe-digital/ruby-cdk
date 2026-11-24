@@ -39,6 +39,10 @@ class PurityCheckTest < Minitest::Test
     assert_empty check("# never call node")
   end
 
+  def test_a_binary_literal_is_not_read_as_words
+    assert_empty check(%(GZIP_MAGIC = "\\x1f\\x8b".b))
+  end
+
   def test_the_marker_allows_toolchain_names
     assert_empty check("# purity: allow-node-words\nwords = %w[node npx]")
   end

@@ -1,0 +1,14 @@
+The templates under test-templates/ are ported from the AWS CDK, like the test
+files that use them (test/cdk/validation/):
+
+  Repository: aws/aws-cdk
+  Commit:     68b2516c09791d78b199f30e455e4670dc9cde6d (main, 2026-11-23)
+  Path:       packages/aws-cdk-lib/cloudformation-include/test/test-templates/
+  Licence:    Apache-2.0
+
+Nothing in them is changed, except:
+
+  - fn-sub-parsing-edges.json is empty in the CDK and is kept empty; no test
+    of the CDK reads it, and none here does.
+  - The nested/ and sam/ directories are not copied: they belong to the cases
+    for nested stacks and SAM transforms, which this tool does not have.

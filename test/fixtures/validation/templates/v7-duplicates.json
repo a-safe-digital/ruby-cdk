@@ -1,0 +1,17 @@
+{
+  "Resources": {
+    "Table": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "music",
+        "AttributeDefinitions": [
+          { "AttributeName": "id", "AttributeType": "S" }
+        ],
+        "KeySchema": [
+          { "AttributeName": "id", "KeyType": "HASH" },
+          { "AttributeName": "id", "KeyType": "HASH" }
+        ]
+      }
+    }
+  }
+}

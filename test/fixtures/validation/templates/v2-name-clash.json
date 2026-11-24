@@ -1,0 +1,10 @@
+{
+  "Parameters": {
+    "Stage": { "Type": "String" }
+  },
+  "Resources": {
+    "Stage": {
+      "Type": "AWS::S3::Bucket"
+    }
+  }
+}

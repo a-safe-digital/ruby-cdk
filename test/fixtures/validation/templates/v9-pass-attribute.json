@@ -1,0 +1,13 @@
+{
+  "Resources": {
+    "One": {
+      "Type": "AWS::S3::Bucket"
+    },
+    "Two": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": { "Fn::GetAtt": ["One", "Arn"] }
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "counts": {
+    "only_provider_schemas": 25,
+    "only_resource_specification": 231,
+    "provider_schemas": 1923,
+    "resource_specification": 2129,
+    "types": 2154
+  },
+  "meta_format": 2,
+  "model_format": 1,
+  "model_sha256": "72a25b4155afd84bfb1f287157d0ca45b2354799a22a2e03e09865975b13cab9",
+  "region": "us-east-1",
+  "schema_version": "resource specification 273.0.0, model sha256:72a25b4155afd84bfb1f287157d0ca45b2354799a22a2e03e09865975b13cab9, model format 1",
+  "sources": {
+    "provider_schemas": {
+      "bytes": 3423945,
+      "etag": "\"72f6b2075c20d73a53a58be2512231b4\"",
+      "last_modified": "2026-11-24T05:29:10Z",
+      "sha256": "005e18553699e38c549d76407254106e4ba6d4c0c811719195649244fc73cf6e",
+      "types": 1923,
+      "url": "https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip"
+    },
+    "resource_specification": {
+      "bytes": 1034963,
+      "etag": "\"b7c11342bc504480eaed51ca4914278e\"",
+      "last_modified": "2026-11-19T20:06:12Z",
+      "sha256": "180083997b639db4a453bfa4c24a0cb5aba35f44a46538c28aff8a0f240b56be",
+      "types": 2129,
+      "url": "https://d1uauaxba7bl26.cloudfront.net/latest/gzip/CloudFormationResourceSpecification.json"
+    }
+  },
+  "specification_version": "273.0.0"
+}

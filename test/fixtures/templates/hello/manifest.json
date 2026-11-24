@@ -1,0 +1,14 @@
+{
+  "ruby_cdk_version": "0.0.1",
+  "schema_version": "resource specification 273.0.0, model sha256:72a25b4155afd84bfb1f287157d0ca45b2354799a22a2e03e09865975b13cab9, model format 1",
+  "stacks": [
+    {
+      "name": "hello",
+      "template": "hello.template.json",
+      "template_hash": "sha256:36e07de1dd63a6df6a33444fa2d82a2618658004626c299658a431c713dadaf0",
+      "env": null,
+      "dependencies": [],
+      "assets": []
+    }
+  ]
+}
