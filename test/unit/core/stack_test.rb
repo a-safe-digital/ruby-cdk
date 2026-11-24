@@ -173,7 +173,10 @@ class CoreStackTest < CoreHelpers::TestCase
     assert_equal "OnlyInProd", stack.instance_variable_get(:@conditional).logical_id
     assert_equal %w[ TableName VpcId OnlyInProd ], stack.outputs.keys
     assert_equal "blog-VpcId", stack.export_name("VpcId")
-    assert_equal "blog-vpc_id", stack.export_name(:vpc_id)
+    # An output's id is its logical ID, and a logical ID holds letters and digits only.
+    error = assert_raises(RubyCdk::UsageError) { stack.export_name(:vpc_id) }
+
+    assert_match(/must hold letters and digits only/, error.message)
   end
 
   def test_an_output_needs_a_value_and_a_boolean_export
@@ -252,6 +255,24 @@ class CoreStackTest < CoreHelpers::TestCase
     assert_equal long[-20, 20], stack.unique_name("a-very-long-suffix-that-goes-on-and-on", max_length: 20)
     assert_match(/\A[0-9a-f]{8}\z/, stack.unique_name("images", max_length: 8))
     assert_equal long, stack.unique_name("a-very-long-suffix-that-goes-on-and-on", max_length: 128)
+  end
+
+  def test_the_default_length_never_gives_more_than_63_characters_so_the_name_is_always_a_valid_bucket_name
+    assert_equal 63, RubyCdk::Stack::DEFAULT_UNIQUE_NAME_MAX_LENGTH
+
+    long_stack = build_stack("a" * 120, app_options: { stack_name_prefix: "b" * 60 })
+    names = [ long_stack.unique_name, long_stack.unique_name("images"), long_stack.unique_name("x" * 200), build_stack.unique_name ]
+
+    names.each do |name|
+      assert_operator name.length, :<=, 63, name
+      assert_operator name.length, :>=, RubyCdk::Stack::MIN_UNIQUE_NAME_LENGTH, name
+      assert_match(/\A[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\z/, name)
+    end
+    assert_equal 63, names.first.length
+    assert_equal 63, names[1].length
+    # The name is the stack name, the suffix and the hash, shortened from the left:
+    # what is kept of the stack name is its tail, here letters, then the suffix.
+    assert_match(/\Aa+-images-[0-9a-f]{8}\z/, names[1])
   end
 
   def test_unique_name_needs_an_env_and_a_sensible_length
