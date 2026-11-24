@@ -22,9 +22,8 @@ class ComponentBoundariesTest < Minitest::Test
 
   # The components `require "ruby-cdk"` must reach: the synthesis path. Never the
   # deploy engine, the SDK adapters, the diff, the security rules, the test kit,
-  # the bootstrap or the command line: each of those is loaded by a command. The
-  # validator joins the list with its row, when it is built.
-  UMBRELLA_REACHES = %i[errors values version core cfn synth schema assets ports].freeze
+  # the bootstrap or the command line: each of those is loaded by a command.
+  UMBRELLA_REACHES = %i[errors values version core cfn synth schema validation assets ports].freeze
 
   # The one file in the gem that evaluates a path given to it at run time: the
   # app file the user named. That file is not part of the gem, so it is no edge
