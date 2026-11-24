@@ -338,7 +338,9 @@ module RubyCdk
       #   template.get([ "Resources", "Role", "Properties", "ManagedPolicyArns", 0 ]).as_string
       #
       # path: the keys from the root, separated by dots, or a list of keys and
-      #       array indexes.
+      #       array indexes. A null in the template is a value: `get` hands it to
+      #       the capture, whose `as_*` refuse it as the CDK's do. A key that is
+      #       not there is not.
       #
       # Raises RubyCdk::Test::AssertionError when the template has no value there.
       #
@@ -347,17 +349,10 @@ module RubyCdk
         segments = path.is_a?(String) ? path.split(".") : path.map(&:to_s)
         value = @template
         segments.each do |segment|
-          found =
-            if value.is_a?(Array) && segment.match?(/\A\d+\z/)
-              segment.to_i < value.length ? value[segment.to_i] : nil
-            elsif value.is_a?(Hash) && value.key?(segment)
-              value[segment]
-            end
-          if found.nil?
+          value = Private::Js.get(value, segment)
+          if value.equal?(UNDEFINED)
             raise AssertionError, "Template has no value at #{segments.join(".")}"
           end
-
-          value = found
         end
 
         capture = Capture.new

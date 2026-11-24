@@ -165,6 +165,16 @@ class TestKitMatcherTest < Minitest::Test
     assert_equal false, T.serialized_json(JSON.parse(json, max_nesting: false)).test(json).has_failed?
   end
 
+  def test_serialized_json_matches_a_nested_literal_exactly
+    # The literal inside a serialized_json pattern is compiled as an exact match,
+    # as the CDK's is (partialObjects false): the parsed JSON may not carry keys
+    # the pattern does not name.
+    result = T.serialized_json({ "Foo" => { "Bar" => 1 } }).test('{"Foo":{"Bar":1,"Baz":2}}')
+
+    assert_equal true, result.has_failed?
+    assert_includes result.to_human_strings.join("\n"), "Unexpected key Baz at /Foo/Baz"
+  end
+
   # --- arrayWith
 
   def test_an_empty_array_with_matches_any_array

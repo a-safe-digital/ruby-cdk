@@ -287,12 +287,26 @@ class TestKitTemplateTest < Minitest::Test
       "Resources.Fn.Properties.Layers.5",
       "Resources.Fn.Properties.Layers.x",
       "Resources.Fn.Type.X",
-      "Resources.Fn.Properties.VpcConfig"
+      "Resources.Fn.Properties.VpcConfig.X"
     ].each do |path|
       error = assert_raises(T::AssertionError, "#{path} gave a value") { template.get(path) }
 
       assert_equal "Template has no value at #{path}", error.message
     end
+  end
+
+  def test_get_of_a_null_gives_a_capture_that_refuses_it
+    template = T.from_json(TEMPLATE)
+
+    capture = template.get("Resources.Fn.Properties.VpcConfig")
+
+    assert_instance_of T::Capture, capture
+    # A capture only holds what passed its test, and null does not: its as_* say
+    # that nothing was captured, and the CDK's message is on the test's result.
+    error = assert_raises(T::AssertionError) { capture.as_object }
+
+    assert_equal "No value captured", error.message
+    assert_match(/Can only capture non-nullish values\. Found null/, capture.test(nil).to_human_strings.first)
   end
 
   def test_the_capture_of_get_checks_the_type_as_any_capture

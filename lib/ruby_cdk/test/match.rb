@@ -13,6 +13,12 @@
 #   Before matching, the Symbols of a pattern become strings (Js.normalize).
 #   Where JavaScript throws one of its own TypeErrors (a null where an object was
 #   needed), this port throws a Ruby TypeError with the same message.
+#
+#   Known difference, stated for the record: a Ruby Integer is compared exactly,
+#   where V8 collapses both sides to a double. A Ruby literal and the JSON bytes
+#   of a template that disagree past 2^53 (exact(9007199254740993) against bytes
+#   saying ...992) fail here and pass there. JSON.parse of the same bytes gives
+#   the same Integer on both sides, so nothing else is affected.
 
 require_relative "matcher"
 require_relative "private/absent"
