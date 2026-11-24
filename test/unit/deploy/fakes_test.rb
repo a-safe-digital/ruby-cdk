@@ -127,6 +127,41 @@ class DeployFakesTest < Minitest::Test
     assert_equal "FAILED", client.describe_change_set("blog", id).status
   end
 
+  # CloudFormation refuses a change set that would change nothing: the set is
+  # created FAILED with the reason (fake-cloudformation.ts in the CDK's CLI
+  # answers the same). A create on a stack that has no template yet is never
+  # empty.
+  def test_an_update_change_set_that_would_change_nothing_is_created_failed_like_cloudformation_s
+    client.stack("blog", template: TEMPLATE)
+
+    answer = client.create_change_set("blog", "a-name", template: TEMPLATE, change_set_type: :update,
+      parameters: [], tags: [], capabilities: [])
+    answer_of = client.describe_change_set("blog", answer.id)
+
+    assert_equal "FAILED", answer_of.status
+    assert_equal "The submitted information didn't contain changes.", answer_of.status_reason
+    assert_empty answer_of.changes
+  end
+
+  def test_an_update_change_set_with_a_different_template_is_ready
+    client.stack("blog", template: "{}")
+
+    answer = client.create_change_set("blog", "a-name", template: TEMPLATE, change_set_type: :update,
+      parameters: [], tags: [], capabilities: [])
+
+    assert_equal "CREATE_COMPLETE", client.describe_change_set("blog", answer.id).status
+  end
+
+  def test_a_change_set_that_is_gone_answers_as_deleted
+    client.create_change_set("blog", "a-name", template: TEMPLATE, change_set_type: :create, parameters: [], tags: [], capabilities: [])
+    id = client.change_sets.keys.first
+    client.delete_change_set("blog", id)
+
+    answer = client.describe_change_set("blog", id)
+
+    assert_equal "DELETE_COMPLETE", answer.status, "as CloudFormation answers for a deleted set"
+  end
+
   def test_deleting_a_stack_ends_in_delete_complete_and_it_stops_being_listed
     client.stack("blog", id: STACK_ID)
     client.stack("other", id: "#{STACK_ID}-other", status: "ROLLBACK_COMPLETE")

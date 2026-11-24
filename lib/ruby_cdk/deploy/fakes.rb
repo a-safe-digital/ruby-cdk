@@ -40,8 +40,9 @@ module RubyCdk
       Record = Struct.new(:name, :id, :status, :template, :parameters, :tags, :outputs, :termination_protection, :events,
         :resources, keyword_init: true)
 
-      # A change set as the fake keeps it.
-      ChangeSetRecord = Struct.new(:id, :type, :template, :parameters, :tags, :capabilities, :on_stack_failure, keyword_init: true)
+      # A change set as the fake keeps it. empty marks one CloudFormation would
+      # refuse: created for a stack whose template is already the new one.
+      ChangeSetRecord = Struct.new(:id, :type, :template, :parameters, :tags, :capabilities, :on_stack_failure, :empty, keyword_init: true)
 
       # The CloudFormation port, scripted.
       class CfnClient
@@ -166,8 +167,18 @@ module RubyCdk
           scripted(:create_change_set, name, change_set_name, template: template, change_set_type: change_set_type,
             parameters: parameters, tags: tags, capabilities: capabilities, on_stack_failure: on_stack_failure) do
             id = "arn:aws:cloudformation:#{REGION}:#{ACCOUNT}:changeSet/#{change_set_name}/#{next_number}"
+            record = lookup(name)
+            # CloudFormation refuses a change set that would change nothing: the
+            # set is created FAILED, with the reason (the CDK's own fake marks
+            # it the same way, fake-cloudformation.ts). Nothing changes only
+            # when the template, the parameters and the tags are all the same.
+            # A test that wants another answer scripts it.
+            new_parameters = pairs_of(parameters, record)
+            unchanged = change_set_type == :update && record && record.template == template &&
+              new_parameters == (record.parameters || {}) && tags == (record.tags || [])
             @change_sets[id] = ChangeSetRecord.new(id: id, type: change_set_type, template: template,
-              parameters: pairs_of(parameters), tags: tags, capabilities: capabilities, on_stack_failure: on_stack_failure)
+              parameters: new_parameters, tags: tags, capabilities: capabilities,
+              on_stack_failure: on_stack_failure, empty: unchanged)
             bring_into_review(name, template, parameters, tags) if change_set_type == :create
             ChangeSet.new(id: id)
           end
@@ -176,9 +187,18 @@ module RubyCdk
         def describe_change_set(name, change_set_id)
           scripted(:describe_change_set, name, change_set_id) do
             change_set = @change_sets[change_set_id]
-            ChangeSet.new(id: change_set_id, status: "CREATE_COMPLETE", execution_status: "AVAILABLE",
-              changes: [ Change.new(action: change_set&.type == :update ? "Modify" : "Add", logical_id: "Bucket",
-                resource_type: "AWS::S3::Bucket", replacement: "False", detail: nil) ])
+            if change_set.nil?
+              # A change set that is gone answers as a deleted one, as
+              # CloudFormation answers for a deleted set.
+              ChangeSet.new(id: change_set_id, status: "DELETE_COMPLETE")
+            elsif change_set.empty
+              ChangeSet.new(id: change_set_id, status: "FAILED",
+                status_reason: "The submitted information didn't contain changes.", changes: [])
+            else
+              ChangeSet.new(id: change_set_id, status: "CREATE_COMPLETE", execution_status: "AVAILABLE",
+                changes: [ Change.new(action: change_set.type == :update ? "Modify" : "Add", logical_id: "Bucket",
+                  resource_type: "AWS::S3::Bucket", replacement: "False", detail: nil) ])
+            end
           end
         end
 
@@ -275,7 +295,8 @@ module RubyCdk
         def bring_into_review(name, template, parameters, tags)
           record = lookup(name)
           fresh = record.nil? || record.status == StackStatus::DELETED
-          stack(name, status: "REVIEW_IN_PROGRESS", template: template, parameters: pairs_of(parameters), tags: tags,
+          stack(name, status: "REVIEW_IN_PROGRESS", template: template, parameters: pairs_of(parameters, fresh ? nil : record),
+            tags: tags,
             id: fresh ? "arn:aws:cloudformation:#{REGION}:#{ACCOUNT}:stack/#{name}/id-#{next_number}" : nil,
             outputs: record&.outputs || {}, resources: record&.resources || [])
         end
@@ -286,8 +307,17 @@ module RubyCdk
         end
 
         # The parameters of a change set as the stack keeps them: { key => value }.
-        def pairs_of(parameters)
-          parameters.to_a.map { |pair| [ pair[:parameter_key] || pair["parameter_key"], pair[:parameter_value] || pair["parameter_value"] ] }.to_h
+        # A use_previous_value entry keeps what the stack has, which is how the
+        # masked value of a NoEcho parameter goes back as it came.
+        def pairs_of(parameters, record = nil)
+          parameters.to_a.map do |pair|
+            key = pair[:parameter_key] || pair["parameter_key"]
+            if pair[:use_previous_value]
+              [ key, record&.parameters&.dig(key) ]
+            else
+              [ key, pair[:parameter_value] || pair["parameter_value"] ]
+            end
+          end.to_h
         end
 
         def refuse_protected(record)
@@ -415,7 +445,8 @@ module RubyCdk
         end
 
         def outputs(hash)
-          record(:outputs, hash)
+          # Nothing is printed for an empty set of outputs, so nothing is kept.
+          record(:outputs, hash) unless hash.nil? || hash.empty?
         end
 
         def failure(detail)

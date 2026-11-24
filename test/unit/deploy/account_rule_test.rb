@@ -151,7 +151,31 @@ class DeployAccountRuleTest < Minitest::Test
     assert_raises(D::AccountUnresolved) { destroy(client, out, options: D::DeployOptions.new(yes: true), identity: nil) }
     assert_empty client.calls
 
-    destroy(client, out, options: D::DeployOptions.new(yes: true))
+    destroy(client, out, stack: Stack.new(stack_name: "blog", env: Env.new(account: ACCOUNT, region: REGION)),
+      options: D::DeployOptions.new(yes: true))
     assert_equal [ { account: ACCOUNT, region: REGION, profile: nil } ], out.targets
+  end
+
+  def test_destroy_holds_the_whole_account_rule_of_a_stack_with_an_env
+    client = D::Fakes::CfnClient.new
+    client.stack("blog")
+
+    assert_raises(D::TargetMismatch) do
+      destroy(client, stack: Stack.new(stack_name: "blog", env: Env.new(account: OTHER_ACCOUNT, region: REGION)),
+        options: unattended)
+    end
+    assert_empty client.calls, "a destroy in the wrong account never reaches AWS"
+
+    assert_raises(D::AccountRequired) do
+      destroy(client, stack: Stack.new(stack_name: "blog", env: nil), options: D::DeployOptions.new(yes: true))
+    end
+    assert_empty client.calls, "an unattended destroy of a stack without env names its account first"
+
+    out = D::Fakes::Output.new
+    result = destroy(client, out, stack: Stack.new(stack_name: "blog", env: Env.new(account: ACCOUNT, region: REGION)),
+      options: D::DeployOptions.new(yes: true))
+
+    assert_equal :destroyed, result.outcome
+    assert_equal "DELETE_COMPLETE", client.stack_record("blog").status
   end
 end

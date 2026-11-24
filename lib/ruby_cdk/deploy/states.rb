@@ -25,6 +25,10 @@ module RubyCdk
         "UPDATE_ROLLBACK_FAILED" =>
           "Continue the update rollback: in the CloudFormation console, on the Stacks page, choose the stack, " \
           "then Stack actions and Continue update rollback.",
+        "IMPORT_ROLLBACK_FAILED" =>
+          "Continue the rollback: in the CloudFormation console, on the Stacks page, choose the stack, " \
+          "then Stack actions and Continue update rollback. An import whose update fails rolls back like an update, " \
+          "into IMPORT_ROLLBACK_FAILED.",
         "DELETE_FAILED" =>
           "The stack could not be deleted. Fix the resources that blocked the deletion, then delete the stack again: " \
           "in the CloudFormation console, on the Stacks page, choose the stack, then Retry delete."

@@ -27,7 +27,7 @@ class DeployErrorsTest < Minitest::Test
 
   def test_the_engine_s_errors_carry_the_exit_code_of_their_situation
     one = [ D::TargetMismatch, D::AccountMismatch, D::AccountUnresolved, D::StackBusy, D::StackNeedsRepair, D::UnknownStackStatus,
-      D::InvalidTemplate, D::TemplateTooLarge, D::DestroyRefused, D::WaitTimedOut ]
+      D::InvalidTemplate, D::TemplateTooLarge, D::DestroyRefused, D::WaitTimedOut, D::ReplacementNeedsRollback ]
     one.each do |klass|
       assert_kind_of RubyCdk::PreconditionError, klass.new("x"), klass.name
       assert_equal 1, D.exit_code_for(klass.new("x")), klass.name
@@ -78,5 +78,6 @@ class DeployErrorsTest < Minitest::Test
       RubyCdk::Deploy::Output.public_instance_methods(false).sort
     assert_includes RubyCdk::Deploy::CfnClient.public_instance_methods(false), :list_stacks
     assert_equal %i[name id status], RubyCdk::Deploy::ListedStack.members
+    assert_includes RubyCdk::Deploy::DeployResult::OUTCOMES, :destroyed, "a destroy that deleted the stack says so"
   end
 end

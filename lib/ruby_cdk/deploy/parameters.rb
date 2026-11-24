@@ -15,11 +15,14 @@ module RubyCdk
 
       # { parameter key => value }: what the stack will use, defaults included.
       attr_reader :values
-      # What goes to create_change_set: an Array of { parameter_key:, parameter_value: }.
+      # What goes to create_change_set: an Array of
+      # { parameter_key:, parameter_value: } and of
+      # { parameter_key:, use_previous_value: true }.
       attr_reader :api
 
-      # template is parsed; overrides is { key => value }.
-      def initialize(template, overrides = {})
+      # template is parsed; overrides is { key => value }; deployed is
+      # { key => value } as the stack last had it, when there is a stack.
+      def initialize(template, overrides = {}, deployed: nil)
         section = template["Parameters"]
         declared = section.is_a?(Hash) ? section : {}
         given = overrides.to_h.transform_keys(&:to_s)
@@ -32,6 +35,12 @@ module RubyCdk
             add(key, given[key])
           elsif spec.is_a?(Hash) && !spec["Default"].nil?
             @values[key] = text(spec["Default"])
+          elsif deployed && deployed.key?(key)
+            # Not given again: keep what the stack has, as the CDK sends it
+            # (UsePreviousValue). A NoEcho value comes back masked and is sent
+            # back masked, so a deploy with nothing new is recognised as such.
+            @values[key] = text(deployed[key])
+            @api << { parameter_key: key, use_previous_value: true }
           else
             missing << key
           end

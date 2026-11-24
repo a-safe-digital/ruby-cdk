@@ -61,9 +61,9 @@ module DeployFixtures
     engine(client, output, **engine_options).deploy(stack: stack, template: body, identity: identity, options: options)
   end
 
-  def destroy(client, output = RubyCdk::Deploy::Fakes::Output.new, stack_name: "blog",
+  def destroy(client, output = RubyCdk::Deploy::Fakes::Output.new, stack: Stack.new,
     options: RubyCdk::Deploy::DeployOptions.new, identity: client.identity, **engine_options)
-    engine(client, output, **engine_options).destroy(stack_name: stack_name, identity: identity, options: options)
+    engine(client, output, **engine_options).destroy(stack: stack, identity: identity, options: options)
   end
 
   # A change set as CloudFormation describes one. changes is :one, :none or a list.

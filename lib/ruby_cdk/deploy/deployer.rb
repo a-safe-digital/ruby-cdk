@@ -32,9 +32,10 @@ module RubyCdk
       end
     end
 
-    # What came out of a deploy or a destroy.
+    # What came out of a deploy or a destroy. :destroyed is a destroy that
+    # deleted the stack; the CDK tells the two apart as well.
     class DeployResult
-      OUTCOMES = %i[deployed no_changes not_executed rejected failed].freeze
+      OUTCOMES = %i[deployed no_changes not_executed rejected failed destroyed].freeze
 
       attr_reader :stack_name, :stack_id, :outcome, :changes, :outputs, :exit_code
 
@@ -74,7 +75,8 @@ module RubyCdk
       # A change set in one of these is still being created.
       CREATING_STATUSES = %w[CREATE_PENDING CREATE_IN_PROGRESS].freeze
 
-      # The reasons CloudFormation gives when a change set has nothing to do:
+      # The reasons CloudFormation gives when a change set has nothing to do,
+      # matched as prefixes, as the CDK matches them (changeSetHasNoChanges):
       # the two the CDK reads, and the code of its early validation.
       NO_CHANGE_REASONS = [
         "The submitted information didn't contain changes.",
@@ -122,22 +124,36 @@ module RubyCdk
         body = parse_template(template)
         ensure_template_fits(template)
         on_failure = on_failure_code(options.on_failure)
-        parameters = Parameters.new(body, options.parameters)
         capabilities = Capabilities.for(body)
         tags = tags_of(stack.tags, options.tags)
 
         show_target(identity, options)
 
         state, info = prepare_stack(name, client.stack_state(name))
-        if state == :stable && unchanged?(name, info, body, parameters, tags, options)
+        # The parameters are built once the stack has been looked up, as the
+        # CDK builds them after its lookup: a parameter that is not given again
+        # keeps the value the stack has (UsePreviousValue), so a NoEcho value
+        # comes back masked and is sent back masked, and a deploy with nothing
+        # new is recognised as such. With no stack, a parameter without a value
+        # or a default is an error.
+        deployed_parameters = info ? client.stack_parameters(info.id || name) : nil
+        parameters = Parameters.new(body, options.parameters, deployed: deployed_parameters)
+
+        if state == :stable && unchanged?(name, info, body, parameters, tags, options, deployed_parameters)
           reconcile_protection(info.id || name, info.termination_protection, stack.termination_protection)
-          deliver_outputs(info, options)
+          deliver_outputs(info, options, name)
           return DeployResult.new(stack_name: name, stack_id: info.id, outcome: :no_changes, outputs: outputs_of(info))
         end
 
         creating = %i[absent review].include?(state)
         output.announce("#{name}: #{creating ? "creating" : "updating"}: preparing a CloudFormation change set...")
-        client.delete_change_set(name, CHANGE_SET_NAME) unless state == :absent
+        unless state == :absent
+          # The name of a change set is unique per stack while it exists, so the
+          # one deleted here is waited for, as the CDK waits for it ("deleting
+          # may take a bit"): taking the name too early is an AlreadyExists error.
+          client.delete_change_set(name, CHANGE_SET_NAME)
+          wait_for_change_set_gone(name, CHANGE_SET_NAME)
+        end
 
         change_set = change_set_with_rejection(name, nil, creating) do
           client.create_change_set(name, CHANGE_SET_NAME, template: template, change_set_type: creating ? :create : :update,
@@ -152,12 +168,21 @@ module RubyCdk
         wanted_protection = !!stack.termination_protection
 
         if no_changes?(change_set)
-          client.delete_change_set(name, change_set.id)
-          output.announce("#{name}: no changes to deploy. CloudFormation reports that the change set is empty." +
-            (options.force ? " --force was given, but the template and the parameters lead to no change." : ""))
+          # An empty change set is left for the console under --no-execute and
+          # deleted otherwise, as the CDK leaves and deletes it
+          # (deploy-stack.ts, changeSetHasNoChanges).
+          if options.no_execute
+            output.announce("#{name}: CloudFormation reports that the change set would change nothing. " \
+              "It was left unexecuted (--no-execute), and the console can delete it.")
+          else
+            client.delete_change_set(name, change_set.id)
+            output.announce("#{name}: no changes to deploy. CloudFormation reports that the change set is empty." +
+              (options.force ? " --force was given, but the template and the parameters lead to no change." : ""))
+          end
           reconcile_protection(target, current&.termination_protection, wanted_protection)
-          deliver_outputs(current, options)
-          return DeployResult.new(stack_name: name, stack_id: current&.id, outcome: :no_changes, outputs: outputs_of(current))
+          deliver_outputs(current, options, name)
+          return DeployResult.new(stack_name: name, stack_id: current&.id,
+            outcome: options.no_execute ? :not_executed : :no_changes, outputs: outputs_of(current))
         end
 
         changes = changes_of(change_set)
@@ -178,6 +203,8 @@ module RubyCdk
             outputs: outputs_of(current))
         end
 
+        refuse_replacement(name, changes, options, creating)
+
         unless approved?(options, "Deploy these changes to stack #{name} in account #{identity.account} (#{identity.region})?")
           raise ApprovalRequired, "Approval for the changes to stack #{name} was not given, so nothing was deployed. " \
             "The change set was deleted#{creating ? ", with the new stack" : ""}." \
@@ -191,50 +218,54 @@ module RubyCdk
             retain_except_on_create: true)
         end
 
-        final_state, final_info, events = follow_operation(target, name)
-        if final_state == :stable && final_info && DEPLOYED_STATUSES.include?(final_info.status)
-          deliver_outputs(final_info, options)
-          return DeployResult.new(stack_name: name, stack_id: final_info.id, outcome: :deployed, changes: changes,
+        final_state, final_info, events, problem = follow_operation(target, name)
+        if final_state == :stable && (final_info.nil? || DEPLOYED_STATUSES.include?(final_info.status))
+          deliver_outputs(final_info, options, name)
+          return DeployResult.new(stack_name: name, stack_id: final_info&.id || target, outcome: :deployed, changes: changes,
             outputs: outputs_of(final_info))
         end
 
-        output.failure(operation_failure(name, final_state, final_info, events, :deploy))
-        DeployResult.new(stack_name: name, stack_id: final_info&.id, outcome: :failed, changes: changes, exit_code: 5)
+        output.failure(operation_failure(name, final_state, final_info, events, :deploy, problem))
+        DeployResult.new(stack_name: name, stack_id: final_state == :absent ? nil : (final_info&.id || target),
+          outcome: :failed, changes: changes, exit_code: 5)
       end
 
-      def destroy(stack_name:, identity:, options:)
-        check_identity(identity, options)
+      def destroy(stack:, identity:, options:)
+        name = stack.stack_name
+        # The account rule holds for a destroy as for a deploy: a stack with an
+        # env is destroyed only there (section 13).
+        check_account(name, stack, identity, options)
         show_target(identity, options)
 
-        state = client.stack_state(stack_name)
-        info = state == :absent ? nil : client.stack_info(stack_name)
+        state = client.stack_state(name)
+        info = state == :absent ? nil : client.stack_info(name)
         if info.nil?
-          output.announce("Stack #{stack_name} does not exist: nothing to destroy.")
-          return DeployResult.new(stack_name: stack_name, outcome: :no_changes)
+          output.announce("Stack #{name} does not exist: nothing to destroy.")
+          return DeployResult.new(stack_name: name, outcome: :no_changes)
         end
-        raise StackBusy, busy_message(stack_name, info.status) if state == :busy
+        raise StackBusy, busy_message(name, info.status) if state == :busy
 
         if info.termination_protection
-          raise DestroyRefused, "Stack #{stack_name} has termination protection, so destroy refuses to delete it. Nothing was deleted.\n" \
+          raise DestroyRefused, "Stack #{name} has termination protection, so destroy refuses to delete it. Nothing was deleted.\n" \
             "Turn it off first (set termination_protection: false on the stack and deploy, or in the CloudFormation console: " \
-            "Stack actions, then Edit termination protection), then run `ruby-cdk destroy #{stack_name}` again."
+            "Stack actions, then Edit termination protection), then run `ruby-cdk destroy #{name}` again."
         end
 
-        target = info.id || stack_name
-        output.retained(retained_resources(stack_name, client.get_template(target)))
-        unless options.yes == true || output.confirm(stack_name) == true
-          raise ApprovalRequired, "The name of stack #{stack_name} was not typed, so nothing was deleted.\n" \
+        target = info.id || name
+        output.retained(retained_resources(name, client.get_template(target)))
+        unless options.yes == true || output.confirm(name) == true
+          raise ApprovalRequired, "The name of stack #{name} was not typed, so nothing was deleted.\n" \
             "Run the command again and type the stack name when asked, or with --yes to destroy without asking."
         end
 
         client.delete_stack(target)
-        final_state, final_info, events = follow_operation(target, stack_name)
+        final_state, final_info, events, problem = follow_operation(target, name)
         if final_state == :absent
-          return DeployResult.new(stack_name: stack_name, stack_id: info.id, outcome: :deployed)
+          return DeployResult.new(stack_name: name, stack_id: info.id, outcome: :destroyed)
         end
 
-        output.failure(operation_failure(stack_name, final_state, final_info || info, events, :destroy))
-        DeployResult.new(stack_name: stack_name, stack_id: final_info&.id || info.id, outcome: :failed, exit_code: 5)
+        output.failure(operation_failure(name, final_state, final_info || info, events, :destroy, problem))
+        DeployResult.new(stack_name: name, stack_id: final_info&.id || info.id, outcome: :failed, exit_code: 5)
       end
 
       private
@@ -369,12 +400,12 @@ module RubyCdk
       # it. Until then such a stack is not skipped: its change set is created,
       # CloudFormation answers that there is nothing to do, and the deploy ends
       # with exit 0 one request later.
-      def unchanged?(name, info, body, parameters, tags, options)
+      def unchanged?(name, info, body, parameters, tags, options, deployed_parameters)
         return false if options.force || options.no_execute || parameters.resolved_by_cloud_formation?
 
         deployed = JSON.parse(client.get_template(info.id || name).to_s)
         return false unless deployed == body
-        return false if parameters.changes?(client.stack_parameters(info.id || name))
+        return false if parameters.changes?(deployed_parameters)
 
         tag_pairs(client.stack_tags(info.id || name)) == tag_pairs(tags)
       rescue JSON::ParserError, TypeError
@@ -400,13 +431,28 @@ module RubyCdk
         end
       end
 
+      # A change set that is gone answers as deleted or is not found at all;
+      # anything else keeps being asked, until the change-set poller gives up.
+      def wait_for_change_set_gone(name, change_set_id)
+        polling(poller, "CloudFormation did not finish deleting the earlier change set of stack #{name}") do
+          described = begin
+            client.describe_change_set(name, change_set_id)
+          rescue RubyCdk::PreconditionError => e
+            raise unless /not found/i.match?(e.message)
+
+            :gone
+          end
+          :gone if described == :gone || %w[DELETE_COMPLETE DELETE_FAILED].include?(described.status)
+        end
+      end
+
       def no_changes?(change_set)
         if change_set.status == "CREATE_COMPLETE"
           return changes_of(change_set).empty?
         end
 
         reason = change_set.status_reason.to_s
-        change_set.status == "FAILED" && NO_CHANGE_REASONS.any? { |known| reason.include?(known) }
+        change_set.status == "FAILED" && NO_CHANGE_REASONS.any? { |known| reason.start_with?(known) }
       end
 
       def executable?(change_set)
@@ -459,7 +505,30 @@ module RubyCdk
           "and remove what is left of it before deploying it again."
       end
 
+      # A change set that replaces a resource is not executed with rollback
+      # disabled, as the CDK refuses it (deploy-stack.ts,
+      # checkAndExecuteChangeSet): the point of --no-rollback is to keep what a
+      # failed operation has provisioned, and a resource that is being replaced
+      # is not kept. Nothing is executed, and the way in is to drop the flag.
+      def refuse_replacement(name, changes, options, creating)
+        return if creating || !options.no_rollback
+
+        replacing = changes.reject { |change| change.replacement.nil? || change.replacement == "False" }
+        return if replacing.empty?
+
+        names = replacing.map(&:logical_id).join(", ")
+        raise ReplacementNeedsRollback, "Stack #{name}: --no-rollback was given, and the change set replaces #{names}. " \
+          "A resource that is replaced cannot be recovered when the update fails, because with rollback disabled " \
+          "there is nothing to restore it from. Nothing was executed.\n" \
+          "Run `ruby-cdk deploy #{name}` again without --no-rollback to deploy this change with rollback, " \
+          "or with --no-execute to create the change set and read what replaces what first."
+      end
+
       def reconcile_protection(target, current, wanted)
+        # A wish that is not set counts as false, so a stack that stops asking
+        # loses the protection on the next deploy. The CDK reconciles the same
+        # way (deploy-stack.ts, updateTerminationProtection:
+        # `terminationProtection ?? false`).
         wanted = !!wanted
         return if !!current == wanted
 
@@ -477,8 +546,9 @@ module RubyCdk
       # --- an operation in progress
 
       # Follows the operation from its start to a terminal status, printing
-      # every event as it arrives. Answers [state, stack info, events]; the
-      # info is nil when the stack is gone.
+      # every event as it arrives. Answers [state, stack info, events, problem]:
+      # the info is nil when the stack is gone, and problem carries the error
+      # when the status could not be placed.
       def follow_operation(target, name)
         seen = {}
         events = []
@@ -486,26 +556,48 @@ module RubyCdk
         @events_unavailable = false
         @newest_event = nil
 
-        state = polling(operation_poller, "the operation on stack #{name} did not finish") do
+        settled = polling(operation_poller, "the operation on stack #{name} did not finish") do
           read_events(target, seen, events, name)
-          current = client.stack_state(target)
+          current = begin
+            client.stack_state(target)
+          rescue RubyCdk::PreconditionError => e
+            # A status this tool cannot place ends the wait as an operation
+            # failure (exit 5) instead of escaping as exit 1: the operation that
+            # was under way is what to report. Anything else, a throttling blip
+            # among them, keeps being retried.
+            raise unless /does not know how to place/.match?(e.message)
+
+            [ :unreadable, e ]
+          end
           case current
+          when Array then current
           when :busy
             stale_reviews = 0
             nil
           when :review
             # Right after an execution the status from before it can still be read.
             stale_reviews += 1
-            stale_reviews <= STALE_REVIEW_READS ? nil : current
+            stale_reviews <= STALE_REVIEW_READS ? nil : [ current, nil ]
           else
-            current
+            [ current, nil ]
           end
         end
+        state = settled.first
+        problem = settled.last
         read_events(target, seen, events, name)
 
-        # A stack that is no longer there to be described is gone.
-        info = client.stack_info(target) unless state == :absent
-        [ info ? state : :absent, info, events ]
+        info = nil
+        if state != :absent && state != :unreadable
+          begin
+            info = client.stack_info(target)
+          rescue StandardError => e
+            # DescribeStacks blipped after the status had settled: the deploy
+            # still stands, and only its outputs are missing.
+            output.announce("The final state of stack #{name} could not be described (#{e.message}); " \
+              "its status had already settled as #{state}, and the outputs could not be read.")
+          end
+        end
+        [ state, info, events, problem ]
       end
 
       # Prints the events that have not been read yet. The first read leaves the
@@ -531,9 +623,10 @@ module RubyCdk
 
       # Why an operation this engine started did not end well, with the
       # resources that failed and the command to run next. purpose is :deploy
-      # or :destroy.
-      def operation_failure(name, state, info, events, purpose)
-        lines = [ failure_head(name, state, info&.status, purpose) ]
+      # or :destroy. problem is the error that stopped the wait, when there was
+      # one.
+      def operation_failure(name, state, info, events, purpose, problem = nil)
+        lines = [ failure_head(name, state, info&.status, purpose, problem) ]
         failed = failed_resources(events)
         if failed.any?
           lines << "Resources that failed:"
@@ -545,7 +638,13 @@ module RubyCdk
       end
 
       # The first lines of a failure: what happened and what to do next.
-      def failure_head(name, state, status, purpose)
+      def failure_head(name, state, status, purpose, problem = nil)
+        if state == :unreadable
+          return "The status of stack #{name} could not be placed or read while the operation was under way " \
+            "(#{problem&.message || "CloudFormation stopped answering"}). The operation went on in AWS.\n" \
+            "Look at the stack in the CloudFormation console, then run the command again."
+        end
+
         if purpose == :destroy
           if state == :review
             return "Stack #{name} is still in REVIEW_IN_PROGRESS: the deletion did not start.\n" \
@@ -606,12 +705,25 @@ module RubyCdk
         info&.outputs || {}
       end
 
-      def deliver_outputs(info, options)
+      # The file holds every stack of the command, as { stack name => outputs },
+      # which is how the CDK accumulates it (cdk-toolkit.ts): what was written
+      # for another stack stays, and a deploy with nothing to say leaves the
+      # file alone but for its own entry.
+      def deliver_outputs(info, options, name)
         outputs = outputs_of(info)
         output.outputs(outputs)
         return unless options.outputs_file
 
-        File.write(options.outputs_file, "#{JSON.pretty_generate(outputs)}\n")
+        written = begin
+          JSON.parse(File.read(options.outputs_file))
+        rescue StandardError
+          {}
+        end
+        File.write(options.outputs_file, "#{JSON.pretty_generate(written.merge(name => outputs))}\n")
+      rescue StandardError => e
+        # The deploy stood; a file that cannot be written must not undo it.
+        output.announce("The deploy succeeded, but the outputs could not be written to " \
+          "#{options.outputs_file} (#{e.message}). They were printed above.")
       end
 
       # --- tags

@@ -45,6 +45,11 @@ module RubyCdk
     # Exit 1. A wait reached its overall limit.
     class WaitTimedOut < RubyCdk::PreconditionError; end
 
+    # Exit 1. --no-rollback was given for an update whose change set replaces a
+    # resource: a replaced resource cannot be recovered when there is no
+    # rollback to restore it from.
+    class ReplacementNeedsRollback < RubyCdk::PreconditionError; end
+
     # Exit 3. CloudFormation rejected the change set, or did not create it.
     class ChangeSetFailed < RubyCdk::ChangeSetRejected; end
 

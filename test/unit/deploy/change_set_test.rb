@@ -77,9 +77,26 @@ class DeployChangeSetTest < Minitest::Test
     refute_includes client.operations, :execute_change_set
   end
 
+  # The reasons are matched as prefixes, as the CDK matches them
+  # (changeSetHasNoChanges): a reason that contains the no-change text in the
+  # middle is a rejection like any other.
+  def test_a_reason_that_only_contains_the_no_change_text_is_a_rejection
+    client.on(:describe_change_set,
+      change_set(status: "FAILED", status_reason: "Template error: The submitted information didn't contain changes. Check it."))
+
+    error = assert_raises(D::ChangeSetFailed) { deploy(client, options: unattended) }
+
+    assert_equal 3, D.exit_code_for(error)
+    assert_equal [ CHANGE_SET_ID ], deleted_change_set_ids
+    refute_includes client.operations, :execute_change_set
+  end
+
   def test_force_against_an_unchanged_stack_says_so_when_there_is_nothing_to_do
     client.stack("blog", template: TEMPLATE)
-    client.on(:describe_change_set, change_set(status: "FAILED", status_reason: "No updates are to be performed."))
+    # The first describe answers the wait for the older change set of the same
+    # name; the second describes the new one, which CloudFormation refuses.
+    client.on(:describe_change_set, described(status: "DELETE_COMPLETE"),
+      change_set(status: "FAILED", status_reason: "No updates are to be performed."))
     out = D::Fakes::Output.new
 
     result = deploy(client, out, options: unattended(force: true))
@@ -134,12 +151,18 @@ class DeployChangeSetTest < Minitest::Test
 
   def test_a_rejected_change_set_on_an_update_keeps_the_stack
     client.stack("blog", template: "{}")
-    client.on(:describe_change_set, change_set(status: "FAILED", status_reason: "No such property"))
+    # The first describe answers the wait for the older change set of the same
+    # name; the second describes the new one, which CloudFormation rejected.
+    client.on(:describe_change_set, described(status: "DELETE_COMPLETE"),
+      change_set(status: "FAILED", status_reason: "No such property"))
 
     assert_raises(D::ChangeSetFailed) { deploy(client, options: unattended) }
 
-    assert_equal [ NAME, CHANGE_SET_ID ], deleted_change_set_ids, "the one left from before, then the rejected one"
+    deleted = deleted_change_set_ids
+    assert_equal NAME, deleted.first, "the one left from before, of the same name"
+    assert_equal CHANGE_SET_ID, deleted.last, "and the rejected one"
     refute_includes client.operations, :delete_stack
+    assert_equal "CREATE_COMPLETE", client.stack_record("blog").status
   end
 
   def test_early_events_that_cannot_be_read_change_nothing
@@ -287,6 +310,26 @@ class DeployChangeSetTest < Minitest::Test
     assert_equal [ [ "blog", NAME ] ], client.calls_to(:delete_change_set).first(1).map(&:args)
   end
 
+  # The name of a change set is unique per stack while it exists, so the one
+  # deleted to free the name is waited for, as the CDK waits for it ("deleting
+  # may take a bit").
+  def test_the_older_change_set_is_waited_for_before_its_name_is_taken
+    client.stack("blog", template: "{}")
+    client.on(:describe_change_set, change_set(status: "DELETE_IN_PROGRESS"),
+      RubyCdk::PreconditionError.new("#{NAME} not found: it is still being deleted"),
+      described(status: "CREATE_COMPLETE"))
+
+    deploy(client, options: unattended)
+
+    assert_operator client.operations.index(:delete_change_set), :<, client.operations.index(:describe_change_set),
+      "it is deleted first"
+    describes = client.calls_to(:describe_change_set)
+    assert_equal [ "blog", NAME ], describes.first.args, "the older set is asked for by its name"
+    assert_equal 3, describes.length, "polled until gone, then once for the new change set"
+    create_at = client.operations.index(:create_change_set)
+    assert_operator create_at, :>, 2, "the new change set is created only once the name is free"
+  end
+
   # --- what is computed before any request
 
   def test_capabilities_are_computed_from_the_template_and_shown_with_the_changes
@@ -346,7 +389,7 @@ class DeployChangeSetTest < Minitest::Test
     assert_empty client.calls
   end
 
-  def test_a_parameter_without_a_value_stops_before_any_request
+  def test_a_parameter_without_a_value_stops_before_any_change_set
     body = template(resources: { "Bucket" => BUCKET.merge("Properties" => { "BucketName" => { "Ref" => "Name" } }) },
       "Parameters" => { "Name" => { "Type" => "String" } })
 
@@ -354,7 +397,10 @@ class DeployChangeSetTest < Minitest::Test
 
     assert_equal 1, D.exit_code_for(error)
     assert_match(/missing a value: Name/, error.message)
-    assert_empty client.calls
+    # The stack is looked up first, as the CDK looks its parameters up before
+    # it builds them; what must not happen is a change set.
+    assert_equal %i[stack_state], client.operations
+    assert_empty client.calls_to(:create_change_set)
   end
 
   def test_a_template_that_is_not_a_json_object_stops_before_any_request

@@ -13,6 +13,7 @@ class DeployExecutionTest < Minitest::Test
   D = RubyCdk::Deploy
 
   OUTPUTS = { "Url" => "https://example.invalid", "Arn" => "arn:aws:s3:::data" }.freeze
+  STACK_ID = "arn:aws:cloudformation:eu-west-1:111122223333:stack/blog/id-1"
 
   # Deploys with an outputs file and answers [result, what the file holds].
   def with_output_file(client, out, **options)
@@ -175,19 +176,41 @@ class DeployExecutionTest < Minitest::Test
 
     assert_equal OUTPUTS, result.outputs
     assert_equal [ OUTPUTS ], out.shown_outputs
-    assert_equal "#{JSON.pretty_generate(OUTPUTS)}\n", written
+    assert_equal "#{JSON.pretty_generate("blog" => OUTPUTS)}\n", written, "the file holds { stack name => outputs }"
     assert_equal client.stack_record("blog").id, result.stack_id
     assert_equal [ "Add" ], result.changes.map(&:action)
   end
 
-  def test_no_outputs_means_nothing_printed_and_an_empty_file
+  def test_no_outputs_means_nothing_printed_and_the_stack_s_empty_entry
     out = D::Fakes::Output.new
 
     result, written = with_output_file(client, out)
 
     assert_equal({}, result.outputs)
-    assert_equal [ {} ], out.shown_outputs
-    assert_equal "{}\n", written
+    assert_empty out.shown_outputs, "nothing is printed for an empty set of outputs"
+    assert_equal "#{JSON.pretty_generate("blog" => {})}\n", written
+  end
+
+  def test_the_outputs_file_keeps_what_another_stack_wrote_and_adds_its_own
+    path = File.join(Dir.tmpdir, "ruby-cdk-outputs-#{object_id}.json")
+    File.write(path, "#{JSON.pretty_generate("other" => { "Arn" => "arn:other" })}\n")
+
+    deploy(client, options: unattended(outputs_file: path))
+    written = File.read(path)
+    FileUtils.rm_f(path)
+
+    assert_equal "#{JSON.pretty_generate("other" => { "Arn" => "arn:other" }, "blog" => {})}\n", written,
+      "one command deploying several stacks accumulates the file, as the CDK does"
+  end
+
+  def test_an_outputs_file_that_cannot_be_written_does_not_undo_the_deploy
+    out = D::Fakes::Output.new
+
+    result = deploy(client, out, options: unattended(outputs_file: "/no/such/directory/outputs.json"))
+
+    assert_equal :deployed, result.outcome
+    assert_equal 0, result.exit_code
+    assert out.announcements.any? { |text| text.include?("could not be written to /no/such/directory/outputs.json") }
   end
 
   # --- termination protection
@@ -243,6 +266,109 @@ class DeployExecutionTest < Minitest::Test
     @client = nil
     deploy(client, options: unattended(no_rollback: true))
     assert_equal false, client.kwargs_of(:execute_change_set).first[:disable_rollback], "a creation carries OnStackFailure instead"
+  end
+
+  # --- --no-rollback and a replacement, as the CDK disadvises it
+
+  def test_no_rollback_with_a_replacement_is_refused_and_nothing_is_executed
+    client.stack("blog")
+    client.on(:describe_change_set, described(status: "DELETE_COMPLETE"),
+      described(status: "CREATE_COMPLETE", changes: [ change(action: "Modify", logical_id: "Instance", replacement: "True") ]))
+    out = D::Fakes::Output.new
+
+    error = assert_raises(D::ReplacementNeedsRollback) { deploy(client, out, options: unattended(no_rollback: true)) }
+
+    assert_equal 1, D.exit_code_for(error)
+    assert_kind_of RubyCdk::PreconditionError, error
+    assert_match(/--no-rollback was given, and the change set replaces Instance/, error.message)
+    assert_match(/nothing to restore it from/, error.message)
+    assert_match(/without --no-rollback/, error.message)
+    assert_empty client.calls_to(:execute_change_set), "nothing is executed"
+    refute_includes client.operations, :delete_stack, "the stack is kept"
+    assert_empty out.questions, "the question is not even asked"
+  end
+
+  def test_a_conditional_replacement_counts_as_one_under_no_rollback
+    client.stack("blog")
+    client.on(:describe_change_set, described(status: "DELETE_COMPLETE"),
+      described(status: "CREATE_COMPLETE", changes: [ change(action: "Modify", logical_id: "Db", replacement: "Conditional") ]))
+
+    assert_raises(D::ReplacementNeedsRollback) { deploy(client, options: unattended(no_rollback: true)) }
+    assert_empty client.calls_to(:execute_change_set)
+  end
+
+  def test_a_replacement_is_executed_when_rollback_stays_on
+    client.stack("blog")
+    client.on(:describe_change_set, described(status: "DELETE_COMPLETE"),
+      described(status: "CREATE_COMPLETE", changes: [ change(action: "Modify", logical_id: "Instance", replacement: "True") ]))
+
+    result = deploy(client, options: unattended)
+
+    assert_equal :deployed, result.outcome
+    assert_equal 1, client.calls_to(:execute_change_set).length
+  end
+
+  def test_no_rollback_on_a_creation_with_a_replacement_is_not_the_guard
+    client.on(:describe_change_set,
+      described(status: "CREATE_COMPLETE", changes: [ change(action: "Add", logical_id: "Instance", replacement: "True") ]))
+
+    result = deploy(client, options: unattended(no_rollback: true))
+
+    assert_equal :deployed, result.outcome, "a creation carries OnStackFailure instead, and cannot disable rollback here"
+    assert_equal 1, client.calls_to(:execute_change_set).length
+  end
+
+  def test_yes_does_not_bypass_the_replacement_guard
+    client.stack("blog")
+    client.on(:describe_change_set, described(status: "DELETE_COMPLETE"),
+      described(status: "CREATE_COMPLETE", changes: [ change(action: "Modify", logical_id: "Db", replacement: "True") ]))
+
+    assert_raises(D::ReplacementNeedsRollback) { deploy(client, options: unattended(no_rollback: true)) }
+  end
+
+  # --- statuses the operation can end in
+
+  def test_an_import_rollback_failure_is_an_operation_failure_with_the_way_to_continue_it
+    client.stack("blog")
+    client.execute_result("IMPORT_ROLLBACK_FAILED")
+    out = D::Fakes::Output.new
+
+    result = deploy(client, out, options: unattended)
+
+    assert_equal :failed, result.outcome, "the CDK places it in its isFailure: an operation failure, not an unknown status"
+    assert_equal 5, result.exit_code
+    assert_match(/IMPORT_ROLLBACK_FAILED, and has to be repaired/, out.failures.first)
+    assert_match(/Continue update rollback/, out.failures.first)
+  end
+
+  def test_a_status_that_cannot_be_placed_mid_operation_is_a_failure_not_an_escape
+    client.stack("blog")
+    client.on(:stack_state, :stable, :busy,
+      RubyCdk::PreconditionError.new('CloudFormation answers the stack status "SOMETHING_NEW", ' \
+        "which this tool does not know how to place. Nothing was changed."))
+    out = D::Fakes::Output.new
+
+    result = deploy(client, out, options: unattended)
+
+    assert_equal :failed, result.outcome
+    assert_equal 5, result.exit_code, "the operation under way is reported, the raise does not escape as exit 1"
+    assert_match(/could not be placed or read while the operation was under way/, out.failures.first)
+    assert_match(/SOMETHING_NEW/, out.failures.first)
+  end
+
+  def test_a_final_description_that_blips_does_not_turn_a_deploy_into_a_failure
+    client.stack("blog", status: "REVIEW_IN_PROGRESS")
+    # The first description answers prepare_stack; only the final one blips.
+    client.on(:stack_info, D::StackInfo.new(name: "blog", id: STACK_ID, status: "REVIEW_IN_PROGRESS", outputs: {},
+      termination_protection: false), RubyCdk::PreconditionError.new("Throttling: rate exceeded"))
+    out = D::Fakes::Output.new
+
+    result = deploy(client, out, options: unattended)
+
+    assert_equal :deployed, result.outcome
+    assert_equal 0, result.exit_code
+    assert out.announcements.any? { |text| text.include?("could not be described (Throttling") }
+    assert_empty out.shown_outputs, "the outputs could not be read, and nothing is made up for them"
   end
 
   # --- approval is exactly true, whatever an output answers

@@ -327,6 +327,21 @@ class SdkAdaptersTest < Minitest::Test
     assert_equal [ { parameter_key: "Env", parameter_value: "prod" } ], request[:parameters], "either kind of key is taken"
   end
 
+  # A NoEcho parameter comes back masked, so it is not re-sent: the request
+  # asks CloudFormation to keep the deployed value (UsePreviousValue).
+  def test_a_parameter_without_a_value_is_sent_as_the_previous_one
+    cfn.raw.stub_responses(:create_change_set, { id: CHANGE_SET_ID, stack_id: STACK_ID })
+
+    cfn.create_change_set("blog", "cs", template: "{}", change_set_type: :update,
+      parameters: [ { parameter_key: "Pass", use_previous_value: true }, { parameter_key: "Env", parameter_value: "prod" } ],
+      tags: [], capabilities: [])
+
+    assert_equal(
+      [ { parameter_key: "Pass", use_previous_value: true }, { parameter_key: "Env", parameter_value: "prod" } ],
+      sent(cfn, :create_change_set)[:parameters]
+    )
+  end
+
   def test_a_refused_change_set_is_the_rejection_and_any_other_failure_is_a_failure
     cfn.raw.stub_responses(:create_change_set, answered(ValidationError, "Template format error"))
     rejected = assert_raises(RubyCdk::ChangeSetRejected) { cfn.create_change_set("blog", "cs", template: "{}", change_set_type: :create, parameters: [], tags: [], capabilities: []) }

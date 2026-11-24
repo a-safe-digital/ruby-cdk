@@ -13,7 +13,7 @@ class DeploySkipRuleTest < Minitest::Test
   D = RubyCdk::Deploy
 
   OUTPUTS = { "Url" => "https://example.invalid" }.freeze
-  SKIPPED = %i[stack_state stack_info get_template stack_parameters stack_tags].freeze
+  SKIPPED = %i[stack_state stack_info stack_parameters get_template stack_tags].freeze
 
   # A client whose stack was deployed with the template and is stable.
   def deployed(body: TEMPLATE, parameters: {}, tags: [])
@@ -37,23 +37,38 @@ class DeploySkipRuleTest < Minitest::Test
     assert_empty out.questions
   end
 
-  def test_force_deploys_an_unchanged_stack_anyway
+  def test_force_deploys_an_unchanged_stack_and_cloudformation_refuses_the_empty_change_set
     client = deployed
+    out = D::Fakes::Output.new
 
-    result = deploy(client, options: unattended(force: true))
+    result = deploy(client, out, options: unattended(force: true))
 
-    assert_equal :deployed, result.outcome
-    assert_equal :update, client.kwargs_of(:create_change_set).first[:change_set_type]
-    refute_includes client.operations, :get_template, "a forced deploy does not even look"
+    assert_equal :update, client.kwargs_of(:create_change_set).first[:change_set_type], "a forced deploy does not even look"
+    refute_includes client.operations, :get_template
+    # CloudFormation refuses a change set that would change nothing, created
+    # FAILED with the reason (the CDK's fake answers the same), and the CDK
+    # answers that with a no-op and a warning about --force (deploy-stack.ts).
+    assert_equal :no_changes, result.outcome
+    assert_equal 0, result.exit_code
+    assert out.announcements.any? { |text| text.include?("--force was given") }
+    assert_empty client.change_sets, "the refused change set is deleted"
+    refute_includes client.operations, :execute_change_set
   end
 
   def test_no_execute_always_creates_a_change_set
     client = deployed
+    out = D::Fakes::Output.new
 
-    result = deploy(client, options: unattended(no_execute: true))
+    result = deploy(client, out, options: unattended(no_execute: true))
 
     assert_equal :not_executed, result.outcome
     assert_equal 1, client.calls_to(:create_change_set).length
+    # CloudFormation reports that even this one would change nothing; it is
+    # left for the console, as the CDK leaves it (deploy-stack.ts). Only the
+    # older change set of the same name was deleted, never the new one.
+    assert_equal [ [ "blog", D::Deployer::CHANGE_SET_NAME ] ], client.calls_to(:delete_change_set).map(&:args)
+    assert_equal 1, client.change_sets.size
+    assert out.announcements.any? { |text| text.include?("would change nothing") }
   end
 
   def test_a_changed_template_is_deployed
@@ -145,14 +160,60 @@ class DeploySkipRuleTest < Minitest::Test
     assert_equal :no_changes, result.outcome
   end
 
-  def test_a_parameter_resolved_by_cloud_formation_is_never_trusted
+  def test_an_ssm_parameter_is_never_skipped_but_may_still_change_nothing
     body = template(resources: { "Bucket" => BUCKET.merge("Properties" => { "BucketName" => { "Ref" => "Name" } }) },
       "Parameters" => { "Name" => { "Type" => "AWS::SSM::Parameter::Value<String>" } })
     client = deployed(body: body, parameters: { "Name" => "/x" })
 
     result = deploy(client, body: body, options: unattended(parameters: { "Name" => "/x" }))
 
+    # The skip rule does not even ask: the decision is already to deploy, and
+    # the change set is what decides.
+    assert_includes client.operations, :create_change_set
+    # CloudFormation compares the resolved values and refuses the empty change
+    # set, which is the CDK's no-op as well.
+    assert_equal :no_changes, result.outcome
+    assert_equal 0, result.exit_code
+  end
+
+  # DescribeStacks answers the masked value of a NoEcho parameter. It is not
+  # comparable with the real one, so the parameter keeps its deployed value
+  # (UsePreviousValue), as the CDK's updateExisting route does.
+  def test_a_no_echo_parameter_is_sent_back_masked_and_does_not_force_a_redeploy
+    body = template(resources: { "Bucket" => BUCKET.merge("Properties" => { "BucketName" => { "Ref" => "Pass" } }) },
+      "Parameters" => { "Pass" => { "Type" => "String", "NoEcho" => true } })
+    client = deployed(body: body, parameters: { "Pass" => "****" })
+    out = D::Fakes::Output.new
+
+    result = deploy(client, out, body: body, options: unattended)
+
+    assert_equal :no_changes, result.outcome, "the masked value compares equal to itself"
+    assert_equal SKIPPED, client.operations
+    assert_empty client.calls_to(:create_change_set)
+  end
+
+  def test_a_no_echo_parameter_keeps_its_deployed_value_when_nothing_is_given
+    body = template(resources: { "Bucket" => BUCKET.merge("Properties" => { "BucketName" => { "Ref" => "Pass" } }) },
+      "Parameters" => { "Pass" => { "Type" => "String", "NoEcho" => true } })
+    client = deployed(body: body, parameters: { "Pass" => "****" })
+
+    result = deploy(client, body: body, options: unattended)
+
+    assert_equal :no_changes, result.outcome,
+      "the parameter is not given again, and its deployed value is kept (UsePreviousValue)"
+    refute_includes client.operations, :create_change_set
+  end
+
+  def test_a_no_echo_parameter_given_again_is_sent_as_given
+    body = template(resources: { "Bucket" => BUCKET.merge("Properties" => { "BucketName" => { "Ref" => "Pass" } }) },
+      "Parameters" => { "Pass" => { "Type" => "String", "NoEcho" => true } })
+    client = deployed(body: body, parameters: { "Pass" => "****" })
+
+    result = deploy(client, body: body, options: unattended(parameters: { "Pass" => "new-secret" }))
+
     assert_equal :deployed, result.outcome
+    assert_equal [ { parameter_key: "Pass", parameter_value: "new-secret" } ],
+      client.kwargs_of(:create_change_set).first[:parameters]
   end
 
   def test_a_skipped_deploy_still_reconciles_termination_protection
@@ -172,6 +233,6 @@ class DeploySkipRuleTest < Minitest::Test
     written = File.read(path)
     FileUtils.rm_f(path)
 
-    assert_equal "#{JSON.pretty_generate(OUTPUTS)}\n", written
+    assert_equal "#{JSON.pretty_generate("blog" => OUTPUTS)}\n", written, "the file holds { stack name => outputs }"
   end
 end
