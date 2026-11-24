@@ -31,6 +31,18 @@ class ContractTest < Minitest::Test
     assert_same RubyCdk::Fn, RubyCdk::Construct::Fn
   end
 
+  # Every function of the CDK's Fn (core/lib/cfn-fn.ts) that this tool carries,
+  # minus the CDK's internal helpers (minimal_join). When a function is added
+  # or dropped, the architecture's section 3 changes in the same commit.
+  def test_fn_has_the_functions_of_the_contract
+    %i[ref get_att sub join select split base64 import_value import_list_value get_azs find_in_map if equals and_ or_ not_
+       parse_domain_name cidr get_stack_output transform to_json_string len ref_all value_of value_of_all contains
+       each_member_equals each_member_in].each do |name|
+      assert_respond_to RubyCdk::Fn, name
+    end
+    assert_equal({ "Ref" => "AWS::NoValue" }, RubyCdk::Fn::NO_VALUE)
+  end
+
   def test_app
     assert_respond_to RubyCdk::App, :current
     assert_respond_to RubyCdk::App, :build!
@@ -63,9 +75,7 @@ class ContractTest < Minitest::Test
   end
 
   def test_fn_renders_every_intrinsic
-    %i[ref get_att sub join select split base64 import_value get_azs find_in_map if equals and_ or_ not_].each do |name|
-      assert_respond_to RubyCdk::Fn, name
-    end
+    # The name list lives in test_fn_has_the_functions_of_the_contract, above.
     assert_equal({ "Ref" => "AWS::NoValue" }, RubyCdk::Fn::NO_VALUE)
   end
 
