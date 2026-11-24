@@ -59,8 +59,8 @@ module Architecture
     # Layer 3: the only place that knows the AWS SDK.
     Component.new(name: :adapters, layer: 3, entry: "ruby_cdk/deploy/sdk_adapters", paths: %w[ruby_cdk/deploy/sdk_adapters.rb], depends_on: %i[errors ports], gems: %w[aws-sdk-cloudformation aws-sdk-s3 aws-sdk-core],
       purpose: "The AWS SDK behind the two ports."),
-    Component.new(name: :bootstrap, layer: 3, entry: "ruby_cdk/bootstrap", paths: %w[ruby_cdk/bootstrap.rb], depends_on: %i[errors values core synth deploy adapters], gems: [],
-      purpose: "The asset bucket as a stack of this tool's own, deployed with the engine and the adapters: ruby-cdk-assets-<account>-<region>, encrypted, versioned, public access blocked, and its owner checked before anything is created. A command builds it and hands it to the command line."),
+    Component.new(name: :bootstrap, layer: 3, entry: "ruby_cdk/bootstrap", paths: %w[ruby_cdk/bootstrap.rb], depends_on: %i[errors values cfn core synth deploy adapters], gems: [],
+      purpose: "The asset bucket as a stack of this tool's own, deployed with the engine and the adapters: ruby-cdk-assets-<account>-<region>, encrypted, versioned, public access blocked, and its owner checked before anything is created. It builds its resources through cfn, like any stack does. A command builds it and hands it to the command line."),
 
     # Layer 4: composes components; owns no logic of its own.
     Component.new(name: :cli, layer: 4, entry: "ruby_cdk/cli", paths: %w[ruby_cdk/cli.rb ruby_cdk/cli], gems: %w[thor],
