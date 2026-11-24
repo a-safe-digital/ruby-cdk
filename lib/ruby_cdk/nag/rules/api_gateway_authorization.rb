@@ -76,7 +76,7 @@ module RubyCdk
             next false if responses.empty?
 
             responses.all? do |response|
-              v.string("#{response}.#{RESPONSE_STATUS}") == PREFLIGHT_STATUS && cors_header?(v.hash("#{response}.#{RESPONSE_PARAMETERS}"))
+              v.string("#{response}.#{RESPONSE_STATUS}") == PREFLIGHT_STATUS && cors_header?(v.object("#{response}.#{RESPONSE_PARAMETERS}"))
             end
           end
           preflight == true

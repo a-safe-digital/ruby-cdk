@@ -62,7 +62,8 @@ module RubyCdk
         violations = []
         skipped = []
         suppressed = []
-        warnings = []
+        # What the configuration said and was ignored is part of what this run found.
+        warnings = config.warnings.dup
         path_glob = config.suppressed_path(locations)
 
         resources_in(template).each do |logical_id, resource|

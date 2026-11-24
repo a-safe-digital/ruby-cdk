@@ -106,9 +106,11 @@ module RubyCdk
         end
 
         # The configuration in the file at path, or the default when the file
-        # does not exist.
+        # does not exist. A path that exists and cannot be read as a file is
+        # refused: it says someone meant a configuration to be there.
         def from_file(path)
-          return default unless File.file?(path)
+          return default unless File.exist?(path)
+          raise ConfigError, "#{path} cannot be read: it is not a file" unless File.file?(path)
 
           from_hash(parse(File.read(path), path), path)
         rescue SystemCallError => e

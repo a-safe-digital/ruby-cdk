@@ -38,7 +38,7 @@ module RubyCdk
         ApiGatewayAuthorization,
         StatefulDeletionPolicy,
         LogGroupRetention
-      ].freeze
+      ].sort_by(&:id).freeze
 
       class << self
         # Every rule id, in ALL's order.

@@ -25,7 +25,7 @@ module RubyCdk
       # condition in these four rules. There is one violation per statement,
       # where cfn-nag gives one per resource. cdk-nag at da5bed77 has no rule
       # of its own for these policies, so none of it is ported here.
-      class ResourcePolicyWildcardPrincipal < Rule
+      class ResourcePolicyWildcardPrincipal < PolicyStatements
         id "RC-POLICY-001"
         description "Resource policy does not grant access to a wildcard principal without a restricting condition"
         severity :high
@@ -39,13 +39,11 @@ module RubyCdk
           "AWS::KMS::Key" => "Properties.KeyPolicy"
         }.freeze
 
-        include PolicyStatements
-
         def audit
           each_statement(DOCUMENT.fetch(type)) do |path, statement|
             check(path) do
               next unless statement.string("Effect") == "Allow"
-              next unless wildcard_principal?(statement.raw("Principal"))
+              next unless wildcard_principal?(statement)
               next if restricts?(statement)
 
               violate("#{path}.Principal",

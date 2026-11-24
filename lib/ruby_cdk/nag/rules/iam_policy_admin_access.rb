@@ -28,7 +28,7 @@ module RubyCdk
       # out of this rule, while IAMNoWildcardPermissions, from which it was
       # split, checks them. There is one violation per statement, where the
       # source gives one NON_COMPLIANT per resource.
-      class IamPolicyAdminAccess < Rule
+      class IamPolicyAdminAccess < PolicyStatements
         id "RC-IAM-001"
         description "IAM policy does not grant admin access: no Allow statement with Action \"*\" on Resource \"*\""
         severity :high
@@ -37,8 +37,6 @@ module RubyCdk
         # From the source's regular expression: "*", or an ARN that ends in "*".
         ALL_ACTIONS = "*"
         ALL_RESOURCES = /\A(\*|arn:.*\*)\z/.freeze
-
-        include PolicyStatements
 
         def audit
           each_identity_policy_document do |document|

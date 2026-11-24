@@ -26,18 +26,16 @@ module RubyCdk
       #
       # What changed here: the wave card gives the web ports their own rule,
       # at medium, where the source reports them under EC23 at ERROR.
-      class Ec2IngressHttp < Rule
+      class Ec2IngressHttp < SecurityGroupRule
         id "RC-EC2-002"
         description "Security group ingress is not open to the world on port 80 or 443"
         severity :medium
         applies_to "AWS::EC2::SecurityGroup", "AWS::EC2::SecurityGroupIngress"
 
-        include SecurityGroupIngress
-
         private
 
         def flags_ports?(ports)
-          ports != SecurityGroupIngress::ALL_PORTS && !SecurityGroupIngress.covers_other_port?(ports)
+          ports != SecurityGroupRule::ALL_PORTS && !SecurityGroupRule.covers_other_port?(ports)
         end
 
         def message(cidr, ports)

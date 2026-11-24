@@ -25,9 +25,10 @@ module RubyCdk
       # 8b5f03da74202ba323a145e9d037ddce6cab9dec, MIT, Copyright (c)
       # 2016-2021 Stelligent): an instance that names a DBClusterIdentifier is
       # a member of that cluster, which also holds for the members of a Multi-AZ
-      # DB cluster, whose engine does not hold "aurora". The cluster itself is
-      # still read by this rule. There is one violation per resource, as in the
-      # source; its path says where to look.
+      # DB cluster, whose engine does not hold "aurora". Both exemptions are
+      # the instance's: the source requires the cluster itself to be encrypted
+      # whatever its engine. The cluster is still read by this rule. There is
+      # one violation per resource, as in the source; its path says where to look.
       class RdsStorageEncrypted < Rule
         id "RC-RDS-001"
         description "RDS DB instance and Aurora DB cluster have storage encryption enabled"
@@ -43,8 +44,7 @@ module RubyCdk
           v = values
           check(STORAGE_ENCRYPTED) do
             next if v.boolean(STORAGE_ENCRYPTED) == true
-            next if aurora_engine?(v)
-            next if cluster_member?(v)
+            next if type == "AWS::RDS::DBInstance" && (aurora_engine?(v) || cluster_member?(v))
 
             violate(STORAGE_ENCRYPTED, "does not encrypt its storage: set StorageEncrypted to true")
           end

@@ -84,6 +84,38 @@ Repository: <https://github.com/aws/aws-cdk-cli>. Licence: Apache-2.0, the full 
 | `test/unit/assets/zipper_test.rb` | `packages/@aws-cdk/private-tools/test/zip/zip.test.ts`, `packages/@aws-cdk/cdk-assets-lib/test/archive.test.ts` | `eca1b73d682d7763955bec30ab5dd52bbc4327b6` | 7 ported; the others listed in the header |
 | `test/unit/assets/uploader_test.rb` | `packages/@aws-cdk/cdk-assets-lib/test/files.test.ts`, `packages/@aws-cdk/cdk-assets-lib/test/zipping.test.ts` | `eca1b73d682d7763955bec30ab5dd52bbc4327b6` | 6 ported; the others listed in the header |
 
+### stelligent/cfn_nag
+
+Copyright (c) 2016-2021 Stelligent Systems LLC. Licence: MIT, the full text of which is at `test/fixtures/nag/LICENSE.cfn_nag`.
+
+Repository: <https://github.com/stelligent/cfn_nag>. Read at commit `8b5f03da74202ba323a145e9d037ddce6cab9dec`.
+
+| File in this repository | Taken from | Licence | What it is |
+|---|---|---|---|
+| `test/fixtures/nag/cfn_nag/**` (54 templates, verbatim, paths kept) | `spec/test_templates` | MIT | Fixtures: the security rules are measured against the templates cfn-nag ships |
+| `lib/ruby_cdk/nag/rules/policy_statements.rb` | `lib/cfn-nag/base_rules/…` and `cfn-model`'s statement listing | MIT | Rule logic, ported with changes; the file's header names its source |
+| `test/support/nag_template.rb` | `cfn-model`'s YAML short-form handling | MIT | Test support: templates written as cfn-model reads them |
+
+### cdklabs/cdk-nag
+
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. SPDX-License-Identifier: Apache-2.0, the full text of which is at the end of this file.
+
+Repository: <https://github.com/cdklabs/cdk-nag>. Read at commit `da5bed77c1b08e584e3de2d67534c76871af957f`.
+
+| File in this repository | Ported from | Licence | What it is |
+|---|---|---|---|
+| `lib/ruby_cdk/nag/rules/**` | the rule packs (` Packs/NagSuppression…`, the pack rules of the same names) | Apache-2.0 | Rule logic, messages and the suppression design, ported with changes; each file's header names its source rule and what changed |
+
+### stelligent/cfn-model
+
+Copyright (c) 2016-2020 Stelligent Systems LLC. Licence: MIT, the full text of which is at `test/fixtures/nag/LICENSE.cfn_nag`.
+
+Repository: <https://github.com/stelligent/cfn-model>. Read at commit `3ca846093639c1bfdf2069d33c8050ad66122e6b` (v0.6.6, the version cfn-nag pins).
+
+| File in this repository | Ported from | Licence | What it is |
+|---|---|---|---|
+| `lib/ruby_cdk/nag/rules/policy_statements.rb` | the resource models' statement listing | MIT | The statement listing and the wildcard-principal test |
+
 ## Licence texts
 
 ### Apache License, Version 2.0
