@@ -15,7 +15,11 @@ module Hello
         description: "Whether the bucket keeps every version of an object")
 
       bucket = resource("Bucket", "AWS::S3::Bucket", properties: {
-        "BucketEncryption" => { "ServerSideEncryptionByDefault" => { "SSEAlgorithm" => "AES256" } },
+        "BucketEncryption" => {
+          "ServerSideEncryptionConfiguration" => [
+            { "ServerSideEncryptionByDefault" => { "SSEAlgorithm" => "AES256" } }
+          ]
+        },
         "PublicAccessBlockConfiguration" => {
           "BlockPublicAcls" => true,
           "BlockPublicPolicy" => true,

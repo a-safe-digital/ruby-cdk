@@ -1,0 +1,11 @@
+{
+  "Conditions": {
+    "IsProd": { "Fn::Equals": ["a", "a"] }
+  },
+  "Resources": {
+    "Bucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": { "Fn::If": ["IsProd", "Retain", "ForgetIt"] }
+    }
+  }
+}

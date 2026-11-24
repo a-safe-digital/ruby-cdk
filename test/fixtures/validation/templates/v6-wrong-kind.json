@@ -1,0 +1,14 @@
+{
+  "Resources": {
+    "Func": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": { "ZipFile": "print 1" },
+        "Handler": "index.handler",
+        "Role": "arn:aws:iam::123456789012:role/something",
+        "Runtime": "ruby40",
+        "Timeout": []
+      }
+    }
+  }
+}

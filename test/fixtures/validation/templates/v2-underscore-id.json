@@ -1,0 +1,7 @@
+{
+  "Resources": {
+    "my_table": {
+      "Type": "AWS::S3::Bucket"
+    }
+  }
+}

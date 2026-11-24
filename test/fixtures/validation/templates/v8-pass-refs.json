@@ -1,0 +1,16 @@
+{
+  "Parameters": {
+    "Name": { "Type": "String" }
+  },
+  "Resources": {
+    "Bucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": { "Fn::Sub": "${Name}-${AWS::Region}-${Stack}" }
+      }
+    },
+    "Stack": {
+      "Type": "AWS::S3::Bucket"
+    }
+  }
+}

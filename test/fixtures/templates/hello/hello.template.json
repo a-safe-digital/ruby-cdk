@@ -18,9 +18,13 @@
       "UpdateReplacePolicy": "Retain",
       "Properties": {
         "BucketEncryption": {
-          "ServerSideEncryptionByDefault": {
-            "SSEAlgorithm": "AES256"
-          }
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
         },
         "PublicAccessBlockConfiguration": {
           "BlockPublicAcls": true,
