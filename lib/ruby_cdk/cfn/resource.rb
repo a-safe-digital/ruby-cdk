@@ -48,7 +48,10 @@ module RubyCdk
         where = "resource #{id.inspect} in #{scope.path}"
         @type = resource_type(type, where)
         @properties = properties_hash(properties, opts, where)
-        @depends_on = Array(depends_on).map { |target| Core::Ids.logical_id_of(target, "#{where}: depends_on") }
+        # First occurrences kept, duplicates dropped: the CDK keeps dependencies
+        # in a Set (cfn-resource.ts:91, .add at :500), and its test expects one
+        # DependsOn entry after five adds of the same target.
+        @depends_on = Array(depends_on).map { |target| Core::Ids.logical_id_of(target, "#{where}: depends_on") }.uniq
         @condition = Core::Ids.condition_name(condition, "#{where}: condition")
         @deletion_policy = Core::Stateful.deletion_policy(deletion_policy, where:)
         @update_replace_policy = Core::Stateful.update_replace_policy(update_replace_policy, where:)
@@ -57,8 +60,14 @@ module RubyCdk
         end
 
         @metadata = metadata.dup
+        # The logical ID has to be one CloudFormation takes, here and now: the
+        # ids from the Stack down to here, then this one. It is checked before
+        # the node joins the tree, so that a refused one leaves nothing behind.
+        logical_id = "#{Core::Ids.logical_id(scope)}#{Core::Ids.validate_id!(id, scope: scope)}"
+        Core::Ids.validate_logical_id!(logical_id, where: where)
+
         super(scope, id)
-        @logical_id = Core::Ids.logical_id(self)
+        @logical_id = logical_id
         host.register_resource(self)
       end
 
