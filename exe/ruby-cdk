@@ -3,4 +3,7 @@
 
 require "ruby_cdk/cli"
 
-RubyCdk::CLI.start(ARGV)
+# The edge of the process: the command line answers with an exit code, and this
+# is the only place where it becomes the exit status. It exits on its own when
+# it is interrupted (Ctrl-C), with 130.
+RubyCdk::CLI.main(ARGV)
