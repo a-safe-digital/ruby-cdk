@@ -35,16 +35,20 @@ module RubyCdk
     #
     # Answers { uploaded:, skipped: }. Raises what Uploader raises: a bucket
     # that is not ours stops the deploy before anything is looked up.
+    #
+    # The records are read before the owner is checked, so a stack without env
+    # — which the account rule allows, and which cannot have resolved an asset
+    # (Builder#zip refuses) — uploads nothing and reads nothing of its env.
     def self.publish(stack, store:, owner:)
+      records = stack.asset.records
+      return { uploaded: 0, skipped: 0 } if records.empty?
+
       account = stack.env.account.to_s
       unless owner.to_s == account
         raise ArgumentError, "publish was given owner #{owner.inspect}, but the bucket is named for the stack's " \
           "env account #{account.inspect}. Pass the resolved identity's account, and deploy a stack with an env " \
           "only with credentials of that account."
       end
-
-      records = stack.asset.records
-      return { uploaded: 0, skipped: 0 } if records.empty?
 
       Uploader.new(store:, owner: account).upload_all(records, bucket: bucket_name(account, stack.env.region))
     end
