@@ -26,7 +26,7 @@ module RubyCdk
       # as well, as in RC-IAM-001. There is one violation per statement, where
       # the source gives one NON_COMPLIANT per resource. A statement with
       # Action "*" and Resource "*" is reported here and by RC-IAM-001.
-      class IamPolicyFullAccess < Rule
+      class IamPolicyFullAccess < PolicyStatements
         id "RC-IAM-002"
         description "IAM policy does not grant full access: no Allow statement with Action \"*\""
         severity :medium
@@ -34,8 +34,6 @@ module RubyCdk
 
         # From the source's regular expression: "*", or a word and ":*".
         FULL_ACCESS_ACTION = /\A(\*|\w+:\*)\z/.freeze
-
-        include PolicyStatements
 
         def audit
           each_identity_policy_document do |document|

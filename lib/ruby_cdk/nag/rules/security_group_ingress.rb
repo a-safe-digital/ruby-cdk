@@ -5,9 +5,10 @@ require_relative "../rule"
 module RubyCdk
   module Nag
     module Rules
-      # Shared by RC-EC2-001 and RC-EC2-002: finds the ingress rules that a
-      # security group resource or an ingress resource declares, and says
-      # whether one is open to the world, and on which ports.
+      # The shared base of the two ingress rules: it finds the ingress rules
+      # that a security group resource or an ingress resource declares, and
+      # says whether one is open to the world, and on which ports. Each rule
+      # answers which ports are its finding, and what its finding says.
       #
       # Ported from cdk-nag (cdklabs/cdk-nag, commit
       # da5bed77c1b08e584e3de2d67534c76871af957f, Apache-2.0):
@@ -28,11 +29,16 @@ module RubyCdk
       # IpProtocol; the source reads only "-1" that way. ICMP is not a port
       # and raises no finding. A value that is an intrinsic ends the check as
       # skipped, where the source reports an error.
-      module SecurityGroupIngress
+      class SecurityGroupRule < Rule
         INLINE = "Properties.SecurityGroupIngress"
         STANDALONE = "Properties"
         SOURCES = %w[CidrIp CidrIpv6].freeze
         ALL_PROTOCOLS = -1
+        # The protocols a port range belongs to. The provider schema of
+        # AWS::EC2::SecurityGroupIngress says of IpProtocol: specifying -1 "or a
+        # protocol number other than tcp, udp, icmp, and icmpv6 allows traffic
+        # on all ports, regardless of any port range you specify".
+        PORT_PROTOCOLS = [ 6, 17 ].freeze
         ICMP_PROTOCOLS = [ 1, 58 ].freeze
         PROTOCOL_NAMES = { "tcp" => 6, "udp" => 17, "icmp" => 1, "icmpv6" => 58 }.freeze
         ALL_PORTS = :all_ports
@@ -52,6 +58,20 @@ module RubyCdk
           end
         end
 
+        protected
+
+        # Which of the rule's open ports are this rule's finding. Each of the
+        # two rules answers; this body only holds the type together.
+        def flags_ports?(_ports)
+          false
+        end
+
+        # What the finding says. Each of the two rules answers; this body only
+        # holds the type together.
+        def message(_cidr, _ports)
+          ""
+        end
+
         private
 
         def audit_ingress(path)
@@ -63,7 +83,7 @@ module RubyCdk
             protocol = protocol_number(v.raw(full(path, "IpProtocol")), path)
             next if ICMP_PROTOCOLS.include?(protocol)
 
-            ports = protocol == ALL_PROTOCOLS ? ALL_PORTS : port_range(v, path, protocol)
+            ports = (protocol == ALL_PROTOCOLS || !PORT_PROTOCOLS.include?(protocol)) ? ALL_PORTS : port_range(v, path, protocol)
             next if ports.nil?
             next unless flags_ports?(ports)
 
@@ -84,7 +104,7 @@ module RubyCdk
           return PROTOCOL_NAMES.fetch(name) if PROTOCOL_NAMES.key?(name)
           return Integer(name, 10) if /\A\d+\z/.match?(name)
 
-          raise Undecided.new(path, "has IpProtocol #{written.inspect}, which names no protocol")
+          raise Undecided.new(full(path, "IpProtocol"), "has IpProtocol #{written.inspect}, which names no protocol")
         end
 
         # The port range of a tcp or udp rule, or ALL_PORTS when it says -1.

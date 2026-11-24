@@ -6,9 +6,10 @@ require_relative "../rule"
 module RubyCdk
   module Nag
     module Rules
-      # Shared by the rules that read IAM policy statements: where a policy
-      # document is written, how its statements are listed, and the tests a
-      # statement is put to.
+      # The shared base of the rules that read IAM policy statements: where a
+      # policy document is written, how its statements are listed, and the
+      # tests a statement is put to. RC-POLICY-001, RC-IAM-001 and RC-IAM-002
+      # inherit from it.
       #
       # Ported from cfn-model 0.6.6, the model cfn-nag reads templates with
       # (stelligent/cfn-model, commit 3ca846093639c1bfdf2069d33c8050ad66122e6b,
@@ -30,7 +31,7 @@ module RubyCdk
       # and the statement is left unevaluated. A document written as a JSON
       # string, which the schemas of KeyPolicy and PolicyDocument allow, is
       # parsed; cfn-model does not read one.
-      module PolicyStatements
+      class PolicyStatements < Rule
         STATEMENT = "Statement"
         INLINE_POLICIES = "Properties.Policies"
         INLINE_POLICY_TYPES = %w[AWS::IAM::Role AWS::IAM::User AWS::IAM::Group].freeze
@@ -61,18 +62,22 @@ module RubyCdk
         end
 
         # cfn-model's Principal.wildcard?: the principal is a String that holds
-        # a "*", or an object one of whose String values, or String list items, does.
-        def wildcard_principal?(principal)
-          case principal
-          when String
-            principal.include?("*")
-          when Hash
-            principal.values.any? do |part|
-              Array(part).any? { |item| item.is_a?(String) && item.include?("*") }
-            end
-          else
-            false
+        # a "*", or an object one of whose String values, or String list items,
+        # does. A literal "*" decides, whatever else the principal holds. An
+        # intrinsic anywhere in it, and no "*", leaves the question open:
+        # cfn-model reads such a principal as "not a wildcard"; here the check
+        # that asked is counted as not decided.
+        def wildcard_principal?(statement)
+          principal = statement.raw("Principal")
+          return false if principal.nil?
+
+          parts = principal.is_a?(Hash) ? principal.values.flat_map { |part| part.is_a?(Array) ? part : [ part ] } : [ principal ]
+          return true if parts.any? { |part| part.is_a?(String) && part.include?("*") }
+          if parts.any? { |part| Values.dynamic?(part) }
+            raise Undecided.new(statement.full_path("Principal"), "holds #{Values.preview(parts.find { |part| Values.dynamic?(part) })}, a dynamic value")
           end
+
+          false
         end
 
         # True when the statement carries a Condition block with something in

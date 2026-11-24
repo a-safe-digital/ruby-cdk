@@ -25,18 +25,16 @@ module RubyCdk
       #
       # What changed here: the wave card's severity is high for this half of
       # the findings; the source has ERROR for EC23 and for SSH.
-      class Ec2IngressOtherPorts < Rule
+      class Ec2IngressOtherPorts < SecurityGroupRule
         id "RC-EC2-001"
         description "Security group ingress is not open to the world on a port other than 80 or 443"
         severity :high
         applies_to "AWS::EC2::SecurityGroup", "AWS::EC2::SecurityGroupIngress"
 
-        include SecurityGroupIngress
-
         private
 
         def flags_ports?(ports)
-          ports == SecurityGroupIngress::ALL_PORTS || SecurityGroupIngress.covers_other_port?(ports)
+          ports == SecurityGroupRule::ALL_PORTS || SecurityGroupRule.covers_other_port?(ports)
         end
 
         def message(cidr, ports)

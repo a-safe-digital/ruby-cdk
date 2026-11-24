@@ -34,11 +34,13 @@ module RubyCdk
       attr_reader :violations, :skipped, :suppressed, :warnings
 
       # violations: Array<Violation>. skipped: Array<Skipped>. suppressed: Array<Suppressed>. warnings: Array<Warning>.
+      # Each list is copied and frozen: the report is made once, and the lists
+      # the caller handed in stay its own.
       def initialize(violations: [], skipped: [], suppressed: [], warnings: [])
-        @violations = violations.freeze
-        @skipped = skipped.freeze
-        @suppressed = suppressed.freeze
-        @warnings = warnings.freeze
+        @violations = violations.dup.freeze
+        @skipped = skipped.dup.freeze
+        @suppressed = suppressed.dup.freeze
+        @warnings = warnings.dup.freeze
       end
 
       # True when a violation is at threshold or above: fails?(:medium) is true

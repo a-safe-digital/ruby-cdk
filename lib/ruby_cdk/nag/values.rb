@@ -26,6 +26,10 @@ module RubyCdk
     # property it is the value of, so it is read as "absent", never as dynamic:
     # the same reading cfn-nag's BooleanBaseRule gives it (spec/test_templates
     # use it for exactly that).
+    #
+    # So is one Fn::Sub. An Fn::Sub whose string holds no ${...} variable
+    # resolves to that string, so it is read as the literal it is; only an
+    # Fn::Sub with variables is dynamic.
     module Values
       # The property this is the value of is left out of the resource.
       NO_VALUE = { "Ref" => "AWS::NoValue" }.freeze
@@ -35,18 +39,28 @@ module RubyCdk
       # these two, and nothing else.
       SECRET_DYNAMIC_REFERENCE_PREFIXES = [ "{{resolve:secretsmanager:", "{{resolve:ssm-secure:" ].freeze
 
+      # A ${...} in an Fn::Sub string that stands for a variable. ${!Word} is
+      # how a literal ${Word} is written, and is not one.
+      SUB_VARIABLE = /\$\{(?!!)[^}]*\}/.freeze
+
       # Longest form of a value in a message or a reason.
       PREVIEW_LENGTH = 60
 
       module_function
 
       # True only for an intrinsic function itself: {"Ref" => ...} or {"Fn::..." => ...}.
+      # One is the exception: an Fn::Sub whose string holds no variable is
+      # the String it holds, and is not dynamic.
       def intrinsic?(value)
+        return false if literal_sub?(value)
+
         value.is_a?(Hash) && (value.key?("Ref") || value.keys.any? { |key| key.is_a?(String) && key.start_with?("Fn::") })
       end
 
       # True when value, or anything inside it, is an intrinsic function.
       def dynamic?(value)
+        return false if literal_sub?(value)
+
         case value
         when Array
           value.any? { |item| dynamic?(item) }
@@ -55,6 +69,21 @@ module RubyCdk
         else
           false
         end
+      end
+
+      # The String an Fn::Sub without variables resolves to.
+      def literal_sub_string(value)
+        written = value["Fn::Sub"]
+        written.is_a?(Array) ? written.first : written
+      end
+
+      # {"Fn::Sub" => "x"} or {"Fn::Sub" => ["x", ...]} where "x" holds no
+      # ${...} variable: CloudFormation leaves the string as it is.
+      def literal_sub?(value)
+        return false unless value.is_a?(Hash) && value.keys == [ "Fn::Sub" ]
+
+        text = value["Fn::Sub"].is_a?(Array) ? value["Fn::Sub"].first : value["Fn::Sub"]
+        text.is_a?(String) && !SUB_VARIABLE.match?(text)
       end
 
       # True when value removes the property it is written in.
@@ -155,15 +184,15 @@ module RubyCdk
         return nil if value.nil?
         return value if value == true || value == false
         if value.is_a?(String)
-          return true if value.strip.casecmp("true").zero?
-          return false if value.strip.casecmp("false").zero?
+          return true if value.strip.casecmp?("true")
+          return false if value.strip.casecmp?("false")
         end
 
         raise Undecided.new(join(@prefix, path), "is #{Values.preview(value)}, not a boolean")
       end
 
-      # The Hash at path.
-      def hash(path)
+      # The object (a Hash) at path.
+      def object(path)
         value = raw(path)
         return nil if value.nil?
         return value if value.is_a?(Hash)
@@ -198,7 +227,7 @@ module RubyCdk
       # The value written under key inside the Hash at path. For maps whose keys
       # are the user's, such as a function's environment variables.
       def entry(path, key)
-        container = hash(path)
+        container = object(path)
         return nil if container.nil?
 
         where = join(join(@prefix, path), key.to_s)
@@ -226,9 +255,11 @@ module RubyCdk
 
       # The value at path as written, or nil when a container on the way is
       # missing. Each step reads a key, then the item of a list when the key
-      # is written with "[n]". dynamic says what an intrinsic on the way does:
-      # :raise ends the read as undecided, :nil returns nil, :keep returns the
-      # intrinsic itself.
+      # The value at path as written, or nil when a container on the way is
+      # missing. Each step reads a key, then the item of a list when the key
+      # is written with "[n]". When a step meets an intrinsic function, :raise
+      # ends the read as undecided, and :keep returns the intrinsic as it is
+      # written, AWS::NoValue included.
       def walk(path, dynamic:)
         value = @root
         where = @prefix
@@ -247,16 +278,16 @@ module RubyCdk
       end
 
       # The item under key inside container, which must be of the given class.
-      # AWS::NoValue reads as absent.
+      # AWS::NoValue reads as absent, except for :keep, which returns it.
       def read(container, key, where, dynamic, klass)
         return nil if container.nil?
         return nil unless container.is_a?(klass)
 
         value = container[key]
-        return nil if Values.no_value?(value)
+        return nil if Values.no_value?(value) && dynamic != :keep
+        return Values.literal_sub_string(value) if Values.literal_sub?(value)
         if Values.intrinsic?(value)
           return value if dynamic == :keep
-          return nil if dynamic == :nil
 
           raise Undecided.new(where, "is #{Values.preview(value)}, a dynamic value")
         end
