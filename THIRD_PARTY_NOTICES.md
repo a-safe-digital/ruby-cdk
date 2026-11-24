@@ -54,7 +54,7 @@ The files of the test kit were read at commit `025a6f67fec3d37a6ffdc6168f8a751a0
 | `test/cdk/assertions/section_test.rb` | `packages/aws-cdk-lib/assertions/test/private/section.test.ts` | Apache-2.0 | 2 ported, 0 not ported |
 | `test/cdk/assertions/template_test.rb` | `packages/aws-cdk-lib/assertions/test/template.test.ts` | Apache-2.0 | 82 ported, 3 not ported (listed in the header of the file) |
 
-Two files of the package are not ported, because they test what this tool does not have: `annotations.test.ts` (23 cases, the CDK's synth-time annotations) and `tags.test.ts` (10 cases, the `Tags` aspect).
+Two files of the package are not ported, because they test what this tool does not have: `annotations.test.ts` (23 cases, the CDK's synth-time annotations) and `tags.test.ts` (12 runtime cases, the `Tags` aspect).
 
 #### Tests: other suites of the CDK, ported
 
