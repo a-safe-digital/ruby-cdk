@@ -30,6 +30,9 @@ module RubyCdk
 
       ISO_HINT = "for example time.utc.iso8601".freeze
 
+      # The transform Fn::ToJsonString and Fn::Length need.
+      LANGUAGE_EXTENSIONS = "AWS::LanguageExtensions".freeze
+
       def initialize(stack, issues: [])
         @stack = stack
         @issues = issues
@@ -37,6 +40,10 @@ module RubyCdk
       end
 
       # The whole template of the stack.
+      #
+      # Transform comes last, whatever the order of resolution: a value deep in
+      # the tree can ask for AWS::LanguageExtensions while it is resolved. The
+      # serializer puts the section in its place.
       def call
         template = { "AWSTemplateFormatVersion" => Serializer::FORMAT_VERSION }
         template["Description"] = @stack.description if @stack.description
@@ -46,6 +53,8 @@ module RubyCdk
         template["Resources"] = resources
         template["Outputs"] = section("Outputs", @stack.outputs) { |output| output_body(output) }
         template["Metadata"] = at("Metadata") { pairs(@stack.metadata) } unless @stack.metadata.empty?
+        declared = @stack.transforms
+        template["Transform"] = declared.one? ? declared.first : declared unless declared.empty?
         template.compact
       end
 
@@ -179,7 +188,17 @@ module RubyCdk
       end
 
       def hash_value(hash)
+        # Fn::ToJsonString and Fn::Length are CloudFormation's only functions
+        # that need the AWS::LanguageExtensions transform (its reference says so
+        # on both pages). Declaring it here, as a stack of the CDK does with
+        # addTransform, is what makes the template valid.
+        @stack.transform(LANGUAGE_EXTENSIONS) if needs_language_extensions?(hash)
         simplify_join(pairs(hash))
+      end
+
+      # A Hash with one key, Fn::ToJsonString or Fn::Length.
+      def needs_language_extensions?(hash)
+        hash.size == 1 && (hash.key?("Fn::ToJsonString") || hash.key?("Fn::Length"))
       end
 
       def array_value(array)

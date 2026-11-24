@@ -15,7 +15,7 @@ module RubyCdk
       FILE_SUFFIX = ".template.json"
 
       # Top-level sections, in this order, each present only when it has something in it.
-      SECTION_ORDER = %w[AWSTemplateFormatVersion Description Parameters Mappings Conditions Resources Outputs Metadata].freeze
+      SECTION_ORDER = %w[AWSTemplateFormatVersion Transform Description Parameters Mappings Conditions Resources Outputs Metadata].freeze
 
       # The attributes of a resource, in this order.
       RESOURCE_ATTRIBUTE_ORDER = %w[Type DependsOn Condition Metadata DeletionPolicy UpdateReplacePolicy Properties].freeze

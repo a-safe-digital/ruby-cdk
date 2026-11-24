@@ -18,25 +18,24 @@
 #     object with one key.
 #   - The origin's `new Stack()` is `new_stack` here: a Stack of this tool
 #     needs an App and an id.
+#   - `Token.asList(o)` and `Token.asAny(o)`, a value CloudFormation computes
+#     from o, are o itself: a lone Hash is the list a function answers, and
+#     Fn.join takes it as the list (see test_nested_fn_join_with_list_token).
+#   - `Token.asString(o)` wrapping an object, which the origin's toJsonString
+#     and len cases resolve from a token, is an object with an intrinsic in it:
+#     a plain object is answered as the JSON string or the number, which is the
+#     origin's `with resolved value` case.
 #
 # Not ported, with the reason:
 #
-#   - parse domain name from resolved url; parse domain name on token.
-#     Fn.parseDomainName is not in the Fn contract (architecture §3).
-#   - Fn::EachMemberIn. Fn.conditionEachMemberIn, Fn.valueOfAll and Fn.refAll are
-#     not in the contract, and the last two answer list tokens.
 #   - cross-stack FnJoin elements are properly resolved. It turns on the CDK's
 #     automatic cross-stack reference, a token for another stack's export that
 #     is named by a hash. This tool has neither tokens nor automatic
 #     cross-stack references (architecture §9: nothing is generated implicitly).
-#   - nested Fn::Join with list token. A list token, a list whose one element
-#     resolves to something that is not a list, has no equivalent: every list
-#     here is a real list.
-#   - Fn.toJsonString; Fn.toJsonString with resolved value; Fn.len; Fn.len with
-#     resolved value. Fn.toJsonString and Fn.len are not in the contract, and
-#     their deferred form needs the AWS::LanguageExtensions transform.
 #
-# So 14 cases are ported and 9 are listed.
+# The origin's `stack.templateOptions.transforms` is `stack.transforms` here.
+
+# Parity: 23 cases in the origin; 22 ported; 1 not ported.
 
 require "test_helper"
 require "support/core_helpers"
@@ -62,6 +61,28 @@ class CdkFnTest < CoreHelpers::TestCase
   # test('Fn.split')
   def test_fn_split
     assert_equal [ "hello", "world", "yeah" ], Fn.split(":", "hello:world:yeah")
+  end
+
+  # describe('FnParseDomainName')
+
+  # test('parse domain name from resolved url')
+  def test_parse_domain_name_from_resolved_url
+    assert_equal "test.com", Fn.parse_domain_name("https://test.com/")
+  end
+
+  # test('parse domain name on token')
+  def test_parse_domain_name_on_token
+    stack = new_stack
+
+    url = Fn.join("//", [
+      "https:",
+      Fn.join("/", [
+        "test.com",
+        "graphql"
+      ])
+    ])
+
+    assert_equal "test.com", Fn.parse_domain_name(stack.resolve(url))
   end
 
   # describe('FnJoin')
@@ -159,6 +180,18 @@ class CdkFnTest < CoreHelpers::TestCase
     end
   end
 
+  # test('Fn::EachMemberIn')
+  def test_fn_each_member_in
+    stack = new_stack
+
+    each_member_in = Fn.each_member_in(Fn.value_of_all("AWS::EC2::Subnet::Id", "VpcId"), Fn.ref_all("AWS::EC2::VPC::Id"))
+
+    assert_equal({ "Fn::EachMemberIn" => [
+      { "Fn::ValueOfAll" => [ "AWS::EC2::Subnet::Id", "VpcId" ] },
+      { "Fn::RefAll" => "AWS::EC2::VPC::Id" }
+    ] }, stack.resolve(each_member_in))
+  end
+
   # describe('Ref')
 
   # test('returns a reference given a logical name')
@@ -166,6 +199,22 @@ class CdkFnTest < CoreHelpers::TestCase
     stack = new_stack
 
     assert_equal({ "Ref" => "hello" }, stack.resolve(Fn.ref("hello")))
+  end
+
+  # test('nested Fn::Join with list token')
+  def test_nested_fn_join_with_list_token
+    stack = new_stack
+
+    inner = Fn.join(",", { "NotReallyList" => true })
+    outer = Fn.join(",", [ inner, "Foo" ])
+
+    assert_equal({ "Fn::Join" => [
+      ",",
+      [
+        { "Fn::Join" => [ ",", { "NotReallyList" => true } ] },
+        "Foo"
+      ]
+    ] }, stack.resolve(outer))
   end
 
   # test('Fn.split with an unknown length resolves to simple {Fn::Split}')
@@ -199,6 +248,45 @@ class CdkFnTest < CoreHelpers::TestCase
     split_value = { "Fn::Split" => [ ",", { "Fn::ImportValue" => "ExportName" } ] }
     assert_equal [ { "Fn::Select" => [ 0, split_value ] }, { "Fn::Select" => [ 1, split_value ] }, { "Fn::Select" => [ 2, split_value ] } ],
       stack.resolve(split)
+  end
+
+  # test('Fn.toJsonString')
+  def test_fn_to_json_string
+    stack = new_stack
+
+    # The origin wraps { key: 'value' } in a token; here the object carries an
+    # intrinsic, which is what keeps the function as Fn::ToJsonString.
+    to_json_string = Fn.to_json_string("key" => Fn.ref("value"))
+
+    assert_equal({ "Fn::ToJsonString" => { "key" => { "Ref" => "value" } } }, stack.resolve(to_json_string))
+    assert_includes stack.transforms, "AWS::LanguageExtensions"
+  end
+
+  # test('Fn.toJsonString with resolved value')
+  def test_fn_to_json_string_with_resolved_value
+    assert_equal '{"key":"value"}', Fn.to_json_string("key" => "value")
+  end
+
+  # test('Fn.len')
+  def test_fn_len
+    stack = new_stack
+
+    token = Fn.split("|", { "ThisIsASplittable" => "list" })
+
+    assert_equal({ "Fn::Length" => {
+      "Fn::Split" => [
+        "|",
+        {
+          "ThisIsASplittable" => "list"
+        }
+      ]
+    } }, stack.resolve(Fn.len(token)))
+    assert_includes stack.transforms, "AWS::LanguageExtensions"
+  end
+
+  # test('Fn.len with resolved value')
+  def test_fn_len_with_resolved_value
+    assert_equal 3, Fn.len(Fn.split("|", "a|b|c"))
   end
 
   private

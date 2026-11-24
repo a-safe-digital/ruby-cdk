@@ -51,10 +51,11 @@ module RubyCdk
 
       # The whole of what is wrong with name as a logical ID, in the words of
       # rule V2, or nil when nothing is: the fault, and how to write it instead.
+      # A name too long has no way out to suggest, so the fault stands alone.
       def logical_id_message(name)
         fault = logical_id_fault(name)
         return nil unless fault
-        return fault unless LOGICAL_ID_PATTERN.match?(name)
+        return fault if name.length > MAX_LOGICAL_ID_LENGTH
 
         "#{fault}. #{logical_id_way_out(name)}"
       end

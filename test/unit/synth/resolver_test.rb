@@ -65,6 +65,49 @@ class SynthResolverTest < CoreHelpers::TestCase
     assert_equal %w[AWSTemplateFormatVersion Outputs], template.keys
   end
 
+  def test_a_transform_the_stack_declares_is_written_second_and_declaring_it_twice_changes_nothing
+    stack = build_stack do
+      transform("AWS::Serverless-2016-10-31")
+      transform(:"AWS::Serverless-2016-10-31")
+      resource("A", "AWS::SNS::Topic")
+    end
+
+    template = stack.to_template
+
+    assert_equal "AWS::Serverless-2016-10-31", template["Transform"]
+    assert_equal %w[AWSTemplateFormatVersion Transform Resources], template.keys
+
+    stack.transform("AWS::Serverless-2016-10-31")
+    assert_equal "AWS::Serverless-2016-10-31", stack.to_template["Transform"]
+  end
+
+  def test_a_value_that_needs_the_language_extensions_adds_its_transform_after_the_declared_ones
+    stack = build_stack do
+      transform("AWS::Serverless-2016-10-31")
+      resource("Fn", "AWS::Lambda::Function",
+        "Json" => Fn.to_json_string("key" => Fn.ref("A")), "Count" => Fn.len(Fn.split(",", Fn.import_value("X"))))
+    end
+
+    template = stack.to_template
+
+    assert_equal [ "AWS::Serverless-2016-10-31", "AWS::LanguageExtensions" ], template["Transform"]
+    assert_equal [ "AWS::Serverless-2016-10-31", "AWS::LanguageExtensions" ], stack.transforms
+  end
+
+  def test_a_find_in_map_with_a_default_value_needs_no_transform
+    stack = build_stack do
+      mapping("RegionMap", "eu" => { "size" => "small" })
+      resource("A", "AWS::SNS::Topic", "Size" => Fn.find_in_map("RegionMap", "eu", "size", default_value: "medium"))
+    end
+
+    template = stack.to_template
+
+    assert_nil template["Transform"]
+    assert_empty stack.transforms
+    assert_equal({ "Fn::FindInMap" => [ "RegionMap", "eu", "size", { "DefaultValue" => "medium" } ] },
+      template["Resources"]["A"]["Properties"]["Size"])
+  end
+
   def test_an_output_whose_lazy_resolves_to_nil_is_an_issue
     stack = build_stack { output("A", value: Lazy.new { nil }) }
 

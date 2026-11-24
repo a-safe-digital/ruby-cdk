@@ -12,6 +12,10 @@ module RubyCdk
     module Rules
       # V2: a logical ID holds letters and digits only, and names one thing in
       # the whole stack.
+      #
+      # A parameter, an output, a mapping, a condition and a resource are
+      # refused when they are declared with any other id, so what reaches this
+      # rule is what a normalizer wrote. Core::Ids has the words.
       class LogicalIds
         RULE = "V2"
         SECTIONS = %w[Parameters Mappings Conditions Resources Outputs].freeze
@@ -24,11 +28,10 @@ module RubyCdk
             names = template[section].is_a?(Hash) ? template[section].keys : []
             names.each do |name|
               path = "#{section}.#{name}"
-              issues << Issue.new(
-                rule: RULE, path:,
-                message: "the logical ID #{name.inspect} must hold letters and digits only",
-                hint: "CloudFormation takes no \"_\", \"-\" or \".\" in a logical ID: write #{suggestion(name)}"
-              ) unless Core::Ids::LOGICAL_ID_PATTERN.match?(name)
+              fault = Core::Ids.logical_id_fault(name)
+              if fault
+                issues << Issue.new(rule: RULE, path:, message: fault, hint: Core::Ids.logical_id_way_out(name))
+              end
 
               if (earlier = first_seen[name])
                 issues << Issue.new(
@@ -53,13 +56,6 @@ module RubyCdk
             )
           end
           issues
-        end
-
-        private
-
-        # "my_table" as "MyTable".
-        def suggestion(name)
-          name.split(/[^A-Za-z0-9]+/).map(&:capitalize).join
         end
       end
 
