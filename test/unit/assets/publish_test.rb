@@ -43,7 +43,7 @@ class AssetsPublishTest < Minitest::Test
   def test_a_stack_with_no_asset_uploads_nothing_and_checks_nothing
     store = AssetsFakeObjectStore.new
 
-    counts = RubyCdk::Assets.publish(stack, store:, owner: "not even an account")
+    counts = RubyCdk::Assets.publish(stack, store:, owner: ACCOUNT)
 
     assert_equal({ uploaded: 0, skipped: 0 }, counts)
     assert_empty store.calls
@@ -78,6 +78,16 @@ class AssetsPublishTest < Minitest::Test
 
     assert_equal({ uploaded: 0, skipped: 1 }, counts)
     assert_equal "the zip of an earlier deploy", store.body(BUCKET, key)
+  end
+
+  def test_an_owner_other_than_the_stack_env_account_is_refused_before_anything_is_checked
+    store = AssetsFakeObjectStore.new.add_bucket(BUCKET)
+    stack.asset.zip(directory("lambda", "index.rb" => "puts 1\n")).key.resolve(stack)
+
+    error = assert_raises(ArgumentError) { RubyCdk::Assets.publish(stack, store:, owner: "999988887777") }
+
+    assert_match(/env account/, error.message)
+    assert_empty store.calls, "a caller that names the wrong account must not reach the store with it"
   end
 
   private

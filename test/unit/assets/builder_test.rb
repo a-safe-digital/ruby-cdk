@@ -69,6 +69,21 @@ class AssetsBuilderTest < Minitest::Test
     refute_equal plain.asset_hash.resolve(stack), stack.asset.zip(source).asset_hash.resolve(stack)
   end
 
+  def test_an_asset_declared_in_one_stack_is_refused_when_resolved_for_another
+    source = directory("lambda", "index.rb" => "puts 1\n")
+    declaring = stack
+    consumer = RubyCdk::Stack.new(RubyCdk::App.new(env: TARGET, out_dir: File.join(@dir, "elsewhere")), "Consumer")
+    asset = declaring.asset.zip(source)
+
+    error = assert_raises(RubyCdk::UsageError) { asset.key.resolve(consumer) }
+
+    assert_match(/declared in stack Web/, error.message)
+    assert_match(/resolved for stack Consumer/, error.message, "the names are the declaring stack and the resolving one")
+    assert_match(/\.asset\.zip\(/, error.message)
+    refute asset.resolved?, "a refused asset read its files"
+    assert_empty declaring.asset_hashes
+  end
+
   def test_a_stack_without_an_env_refuses_an_asset
     without_env = stack(env: nil)
 
