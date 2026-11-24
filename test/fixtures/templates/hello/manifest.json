@@ -1,6 +1,6 @@
 {
   "ruby_cdk_version": "0.0.1",
-  "schema_version": "resource specification 273.0.0, model sha256:a423694c18d16ce8113b126848a69b74420a23110dbd3df552cda8daa7e128ec, model format 1",
+  "schema_version": "resource specification 273.0.0, model sha256:72a25b4155afd84bfb1f287157d0ca45b2354799a22a2e03e09865975b13cab9, model format 1",
   "stacks": [
     {
       "name": "hello",
