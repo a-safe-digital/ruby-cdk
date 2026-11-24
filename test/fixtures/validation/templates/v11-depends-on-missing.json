@@ -1,0 +1,11 @@
+{
+  "Resources": {
+    "One": {
+      "Type": "AWS::S3::Bucket"
+    },
+    "Two": {
+      "Type": "AWS::S3::Bucket",
+      "DependsOn": ["Nowhere"]
+    }
+  }
+}

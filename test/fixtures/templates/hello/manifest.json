@@ -5,7 +5,7 @@
     {
       "name": "hello",
       "template": "hello.template.json",
-      "template_hash": "sha256:7be193e53a7a9c9d679a41a53b73fddfbb400a154df2c98a1f44beed6ff1564e",
+      "template_hash": "sha256:36e07de1dd63a6df6a33444fa2d82a2618658004626c299658a431c713dadaf0",
       "env": null,
       "dependencies": [],
       "assets": []

@@ -1,0 +1,13 @@
+{
+  "Conditions": {
+    "IsProd": {
+      "Fn::Equals": [
+        { "Fn::GetAtt": ["Bucket", "Arn"] },
+        "some-arn"
+      ]
+    }
+  },
+  "Resources": {
+    "Bucket": { "Type": "AWS::S3::Bucket" }
+  }
+}

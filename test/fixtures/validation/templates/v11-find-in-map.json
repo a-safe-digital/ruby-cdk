@@ -1,0 +1,15 @@
+{
+  "Mappings": {
+    "Region": {
+      "us-east-1": { "Name": "one" }
+    }
+  },
+  "Resources": {
+    "Bucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": { "Fn::FindInMap": ["NotThisMap", { "Ref": "AWS::Region" }, "Name"] }
+      }
+    }
+  }
+}
