@@ -42,11 +42,13 @@ module RubyCdk
 
         # GET url. A network failure raises, as a task that cannot reach its source should.
         #
-        # body is the file as AWS stores it, not what Net::HTTP would hand over: left to
-        # itself it asks for gzip and quietly decodes a Content-Encoding body, which for
-        # the specification is 20 MB of JSON where the file is 1 MB of gzip. So this asks
-        # for gzip itself, which turns that decoding off, and the SHA-256 recorded in
-        # META.json is what `curl URL | shasum -a 256` prints.
+        # body is the transfer this request receives, not what plain curl prints: Net::HTTP
+        # asks for gzip on its own and quietly decodes a Content-Encoding body, which for
+        # the specification is 20 MB of JSON where the file is 1 MB of gzip. Asking for gzip
+        # here turns that decoding off, so the SHA-256 and the size recorded in META.json
+        # are of the bytes as served, and what `curl -H 'Accept-Encoding: gzip' URL |
+        # shasum -a 256` prints. (Plain `curl URL | shasum -a 256` prints something else
+        # again: for the provider zip the endpoint compresses on the fly only when asked.)
         def call(url)
           uri = URI.parse(url)
           request = Net::HTTP::Get.new(uri)

@@ -8,15 +8,32 @@ class SourcesRegionsTest < Minitest::Test
   Regions = RubyCdk::Schema::Sources::Regions
   SPECIFICATION = "latest/gzip/CloudFormationResourceSpecification.json"
 
-  def test_the_three_regions_the_brief_names
+  def test_the_regions_the_first_builds_used
     {
-      "us-east-1" => "https://d1uauaxba7bl26.cloudfront.net/#{SPECIFICATION}",
-      "eu-west-1" => "https://d3tepb21wu62n48.cloudfront.net/#{SPECIFICATION}",
-      "us-west-2" => "https://d1alt0rnwa63ox.cloudfront.net/#{SPECIFICATION}"
+      "us-east-1" => "https://d1uauaxba7bl26.cloudfront.net/latest/gzip/CloudFormationResourceSpecification.json",
+      "eu-west-1" => "https://d3teyb21fexa9r.cloudfront.net/latest/gzip/CloudFormationResourceSpecification.json",
+      "us-west-2" => "https://d201a2mn26r7lk.cloudfront.net/latest/gzip/CloudFormationResourceSpecification.json"
     }.each do |region, specification|
       assert_equal "https://schema.cloudformation.#{region}.amazonaws.com/CloudformationSchema.zip", Regions.urls(region)[:provider_schemas]
       assert_equal specification, Regions.urls(region)[:resource_specification]
     end
+  end
+
+  # The page serves some regions uncompressed; the parser reads either form.
+  def test_the_uncompressed_addresses
+    {
+      "ap-southeast-3" => "https://cfn-resource-specifications-ap-southeast-3-prod.s3.ap-southeast-3.amazonaws.com/latest/CloudFormationResourceSpecification.json",
+      "us-gov-west-1" => "https://s3.us-gov-west-1.amazonaws.com/cfn-resource-specifications-us-gov-west-1-prod/latest/CloudFormationResourceSpecification.json"
+    }.each do |region, specification|
+      refute_includes Regions.urls(region)[:resource_specification], "/gzip/"
+      assert_equal specification, Regions.urls(region)[:resource_specification]
+    end
+  end
+
+  def test_every_address_on_the_page_is_in_the_table
+    assert_equal 37, Regions::SPECIFICATION_URLS.size
+    %w[cn-north-1 cn-northwest-1 ap-east-2 ap-southeast-7].each { |region| assert_includes Regions::SPECIFICATION_URLS, region }
+    assert Regions::SPECIFICATION_URLS.values.all? { |url| url.end_with?("CloudFormationResourceSpecification.json") }
   end
 
   def test_an_unknown_region_is_refused_with_how_to_fix_it

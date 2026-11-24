@@ -152,6 +152,12 @@ class TypeSchemaTest < Minitest::Test
     assert_equal :mutable, widget.update_behaviour("Labels.anything")
     assert_equal :mutable, widget.update_behaviour("Requests.any.Required")
     assert_equal :mutable, widget.update_behaviour("Route.S3.Bucket")
+    # A wildcard flag path covers the properties of the elements, not the list itself.
+    assert_equal :immutable, widget.update_behaviour("Parts.0.Name")
+    assert_equal :unknown, widget.update_behaviour("Parts.0.Role")
+    assert_equal :unknown, widget.update_behaviour("Audits.4.State")
+    assert_equal :mutable, widget.update_behaviour("Parts")
+    assert_equal :mutable, widget.update_behaviour("Audits")
   end
 
   def test_a_path_that_ends_at_a_read_only_property_or_names_nothing_is_unknown
