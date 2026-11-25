@@ -6,6 +6,7 @@ require_relative "core"
 require_relative "synth"
 require_relative "assets"
 require_relative "deploy"
+require_relative "diff"
 require_relative "bootstrap"
 require_relative "cli/io"
 require_relative "cli/failure"
@@ -18,6 +19,7 @@ require_relative "cli/aws"
 require_relative "cli/synth"
 require_relative "cli/list"
 require_relative "cli/validate"
+require_relative "cli/diff"
 require_relative "cli/new"
 require_relative "cli/operation"
 require_relative "cli/bootstrap"
@@ -138,6 +140,19 @@ module RubyCdk
       Cli::Operation.new(session, kind: :destroy).call(names)
     end
 
+    desc "diff [STACK...]", "Show what would change in each stack, against the template that is deployed"
+    method_option :all, type: :boolean, desc: "Diff every stack of the app, dependencies first"
+    method_option :exclusively, type: :boolean, aliases: "-e",
+      desc: "Diff only the stacks named, not the ones they depend on"
+    method_option :fail, type: :boolean,
+      desc: "Exit with 1 when a stack has differences. Without it the command exits 0 either way, as the CDK's diff does"
+    method_option :security_only, type: :boolean,
+      desc: "Show only the security view: the IAM statements and the capability-affecting resources a deployment adds or " \
+        "takes away. It is exact by resource type: every property name AWS publishes a policy document in is read, " \
+        "where the CDK guesses from service metadata and warns that it may miss some"
+    def diff(*names)
+      Cli::Diff.run(session, names)
+    end
 
     desc "new PROJECT", "Create the directory PROJECT with the app scaffold: cdk.rb, one stack, the Gemfile and the git files"
     def new(project = nil)

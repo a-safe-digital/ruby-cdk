@@ -20,7 +20,7 @@ module RubyCdk
       # was given is true.
       Options = Data.define(:app, :out, :profile, :region, :account, :yes, :force, :quiet, :verbose, :json, :color,
         :long, :all, :exclusively, :execute, :on_failure, :parameters, :tags, :outputs_file,
-        :no_validate, :strict_types, :deployer)
+        :no_validate, :strict_types, :deployer, :fail, :security_only)
 
       # Thor's options as Options.
       def self.options_from(given)
