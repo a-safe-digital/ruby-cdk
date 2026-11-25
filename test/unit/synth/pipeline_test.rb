@@ -157,7 +157,46 @@ class SynthPipelineTest < CoreHelpers::TestCase
   def test_a_validator_may_answer_nothing
     add_validator(->(_context) { nil })
 
-    assert_empty Synth.run(build_stack).issues
+    result = Synth.run(build_stack)
+
+    assert_empty result.issues
+    assert_empty result.warnings
+  end
+
+  # --- warnings
+
+  def test_a_warning_goes_to_warnings_and_neither_fails_the_synthesis_nor_the_template
+    warning = RubyCdk::Validation::Warning.new(rule: "VW", path: "Resources.A", message: "keep an eye on this", hint: nil)
+    stack = build_stack { resource("A", "AWS::SNS::Topic") }
+    mixed = ->(_context) { [ warning, issue("VE", "an error") ] }
+    add_validator(mixed)
+
+    result = Synth.run(stack)
+
+    assert_equal [ warning ], result.warnings, "the issue that answers warning? with true is a warning, not an issue"
+    assert_equal [ "VE" ], result.issues.map(&:rule)
+    assert_predicate result.warnings, :frozen?
+
+    Synth.unregister_validator(mixed)
+    kept = build_stack { resource("A", "AWS::SNS::Topic") }
+    add_validator(->(_context) { [ warning ] })
+
+    written = Synth.synthesize(kept)
+
+    assert_equal [ warning ], written.warnings, "a warning does not fail synthesize"
+    assert_empty written.issues
+    assert_equal written.template, kept.to_template, "a warning does not fail to_template"
+  end
+
+  def test_the_registered_validators_warn_and_an_unknown_type_reaches_the_template
+    stack = build_stack { resource("Widget", "AWS::Demo::Widget") }
+
+    result = Synth.run(stack)
+
+    assert_empty result.issues
+    assert_equal [ "V1" ], result.warnings.map(&:rule)
+    assert_equal "AWS::Demo::Widget", result.template["Resources"]["Widget"]["Type"],
+      "the keys of a type the model does not know are written verbatim"
   end
 
   # --- run and synthesize

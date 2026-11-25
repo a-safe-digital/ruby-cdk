@@ -35,9 +35,12 @@ end
 # What CloudFormation would reject, found before it leaves the machine: the
 # normalizer and the rules, registered with the pipeline here, where two
 # components can be joined without either naming the other. V2 and V13 stay
-# out of the pipeline's list: the tree reports them at synth already. Warnings
-# wait for the pipeline's separate warnings list; the validators answer errors.
+# out of the pipeline's list: the tree reports them at synth already. The
+# validators run with warnings: true, so V1's unknown-type and V15's
+# stateful-deletion warnings reach synthesis without failing it; the pipeline
+# keeps them apart on the result, under warnings.
 RubyCdk::Synth.register_normalizer(RubyCdk::Validation.normalizers.first)
 RubyCdk::Validation.validators(
-  stateful_types: RubyCdk::Core::Stateful::RETAINED_TYPES + RubyCdk::Core::Stateful::SNAPSHOT_TYPES
+  stateful_types: RubyCdk::Core::Stateful::RETAINED_TYPES + RubyCdk::Core::Stateful::SNAPSHOT_TYPES,
+  warnings: true
 ).each { |validator| RubyCdk::Synth.register_validator(validator) }

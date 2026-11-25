@@ -30,8 +30,11 @@ module RubyCdk
     #   issues    what the phases before found
     Context = Data.define(:stack, :template, :issues)
 
-    # What one stack's synthesis produced. issues is empty unless something is wrong.
-    Result = Data.define(:stack, :template, :bytes, :issues)
+    # What one stack's synthesis produced. issues is empty unless something is
+    # wrong; warnings is what a validator answered as a warning: reported on
+    # the result, but it neither fails the synthesis nor stops the write. The
+    # manifest ignores warnings; a command reads them off the result.
+    Result = Data.define(:stack, :template, :bytes, :issues, :warnings)
 
     class << self
       # --- what other components register
@@ -114,7 +117,8 @@ module RubyCdk
       # --- the phases
 
       # Every phase except write, for one stack. Never raises ValidationError:
-      # result.issues says what is wrong.
+      # result.issues says what is wrong, and result.warnings what a validator
+      # meant as a warning.
       #
       #   prepare   the prepare hooks, children first, once per node
       #   resolve   the live tree becomes a plain template; Lazy values run here
@@ -123,6 +127,7 @@ module RubyCdk
       #   validate  the registered validators, on exactly that template
       def run(stack)
         issues = []
+        warnings = []
         stack.prepare_tree                                        # prepare
         template = Resolver.new(stack, issues:).call              # resolve
         normalizers.each do |normalizer|                          # normalize
@@ -133,13 +138,22 @@ module RubyCdk
         end
         template = Serializer.ordered(template)                   # serialize, the template as it is written
         validators.each do |validator|                            # validate
-          issues.concat(Array(validator.call(context(stack, template, issues))))
+          Array(validator.call(context(stack, template, issues))).each do |issue|
+            # A warning is an issue that answers warning? with true; this tool
+            # does not name the class, the answer is the contract.
+            if issue.respond_to?(:warning?) && issue.warning?
+              warnings << issue
+            else
+              issues << issue
+            end
+          end
         end
-        Result.new(stack:, template:, bytes: Serializer.render(template), issues: issues.freeze)  # serialize, the bytes
+        Result.new(stack:, template:, bytes: Serializer.render(template), issues: issues.freeze,
+          warnings: warnings.freeze)  # serialize, the bytes
       end
 
       # Every phase except write, for one stack. Raises one ValidationError
-      # holding every issue when anything is wrong.
+      # holding every issue when anything is wrong; a warning never raises.
       def synthesize(stack)
         result = run(stack)
         raise ValidationError.new(result.issues) unless result.issues.empty?
@@ -149,7 +163,8 @@ module RubyCdk
 
       # Every phase on every stack of the app, in the order the stacks were
       # created. One ValidationError holds every issue of every stack, and
-      # nothing is written when there is one.
+      # nothing is written when there is one. A warning rides along on its
+      # result, which the manifest takes and ignores.
       def synthesize_app(app)
         results = app.stacks.map { |stack| run(stack) }
         failing = results.select { |result| result.issues.any? }

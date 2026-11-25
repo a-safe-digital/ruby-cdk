@@ -204,4 +204,20 @@ class SynthManifestTest < CoreHelpers::TestCase
 
     assert_equal [ "ruby_cdk_version", "schema_version", "generated_by", "stacks" ], manifest.to_h.keys
   end
+
+  def test_a_warning_does_not_stop_the_write_and_the_manifest_does_not_name_it
+    warning = RubyCdk::Validation::Warning.new(rule: "VW", path: "Resources.T", message: "kept", hint: nil)
+    validator = ->(_context) { [ warning ] }
+    Synth.register_validator(validator)
+    app = build_app
+    stack_class { resource("T", "AWS::SNS::Topic") }.new(app, "a")
+
+    manifest = app.synth
+
+    assert_equal [ "a.template.json", "manifest.json" ], Dir.children(manifest.out_dir).sort
+    assert_equal [ "ruby_cdk_version", "schema_version", "stacks" ], manifest.to_h.keys
+    assert_equal [ "name", "template", "template_hash", "env", "dependencies", "assets" ], manifest.stacks.first.to_h.keys
+  ensure
+    Synth.unregister_validator(validator)
+  end
 end
