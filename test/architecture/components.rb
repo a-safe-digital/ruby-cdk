@@ -64,7 +64,7 @@ module Architecture
 
     # Layer 4: composes components; owns no logic of its own.
     Component.new(name: :cli, layer: 4, entry: "ruby_cdk/cli", paths: %w[ruby_cdk/cli.rb ruby_cdk/cli], gems: %w[thor],
-      depends_on: %i[errors values version core cfn synth assets deploy adapters],
+      depends_on: %i[errors values version core cfn synth assets deploy adapters bootstrap],
       purpose: "The command line: options, the app file, exit codes. Calls components; implements nothing.")
   ].freeze
 
