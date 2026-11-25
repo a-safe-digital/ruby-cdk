@@ -43,9 +43,14 @@ module Integration
       { env:, stack_name_prefix: PREFIX, stateful_default: :delete }
     end
 
-    # Deletes one stack, by its ID, and records the ID first. The ID, not the
-    # name, is what still names the stack once it is deleted, and what the
-    # audit lists its resources by.
+    # Deletes one stack, by its ID, records the ID first, and waits for the
+    # deletion to finish — an audit that lists the stack while it is still
+    # deleting would fail the run for its own teardown. Bounded by
+    # DELETION_TIMEOUT seconds, polling every 2 seconds through the port; a
+    # stack still there when the wait gives up stays recorded and the audit
+    # reports it.
+    DELETION_TIMEOUT = 180
+
     def destroy(name)
       info = @client.stack_info(name)
       unless info&.id
@@ -56,6 +61,14 @@ module Integration
       @destroyed[name] = info.id
       @log.puts("integration: deleting #{name} (#{info.id})")
       @client.delete_stack(info.id)
+      state = @client.stack_state(info.id)
+      waited = 0
+      while !state.nil? && state != :absent && waited < DELETION_TIMEOUT
+        sleep(2)
+        waited += 2
+        state = @client.stack_state(info.id)
+      end
+      @log.puts("integration: #{name} #{state == :absent ? "deleted after #{waited}s" : "still #{state} after #{waited}s"}")
       info.id
     end
 

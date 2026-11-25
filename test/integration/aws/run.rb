@@ -8,9 +8,11 @@
 # or a resource left behind fails the run after the teardown.
 
 require "ruby_cdk"
-
-Dir[File.join(__dir__, "*.rb")].sort.each { |path| require path }
 require "minitest/autorun"
+
+# The harness first, then the scenarios: the *.rb glob includes the *_test.rb
+# files, so autorun is in place before any of them loads.
+Dir[File.join(__dir__, "*.rb")].sort.each { |path| require path }
 
 # The scenarios, as Minitest, so that one failing scenario does not stop the
 # teardown of another and the report is the usual one.

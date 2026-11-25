@@ -11,8 +11,11 @@
 require "ruby_cdk"
 require_relative "../guard"
 require_relative "../runner"
+require "ruby_cdk/deploy"
 require "ruby_cdk/deploy/sdk_adapters"
-require_relative "../../examples/hello/hello/stack"
+# The example sits at the repository root: from test/integration/aws/ that is
+# three directories up.
+require_relative "../../../examples/hello/hello/stack"
 
 module Integration
   module Aws

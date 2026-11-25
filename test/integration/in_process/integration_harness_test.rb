@@ -162,6 +162,19 @@ class RunnerFakeClient
 
   def delete_stack(id)
     @calls << [ :delete_stack, id ]
+    # CloudFormation's own transition: asked to delete, the stack goes. The
+    # runner's wait then ends at once, and the audit sees nothing left.
+    gone = @stacks.find { |_, stack| stack.id == id }
+    return unless gone
+
+    @stacks.delete(gone.first)
+    @prefix.delete(gone.last)
+  end
+
+  # The six-state answer of the port: the stack is being deleted while it is
+  # still named, and gone once it is not.
+  def stack_state(id)
+    @stacks.any? { |_, stack| stack.id == id } ? :busy : :absent
   end
 
   # Every stack that is not deleted, with name, id and status: the port lists
