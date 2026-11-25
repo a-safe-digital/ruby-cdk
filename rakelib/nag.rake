@@ -5,8 +5,17 @@ require_relative "../tools/aws_isolation"
 
 desc "Security rules over every template of cdk.out, with .ruby-cdk/nag.yml if there is one"
 task :nag do
+  # A gate that only ran after a manual synth would never be run, so when
+  # cdk.out has no templates the examples are synthesized into it first: no
+  # AWS, no credentials, deterministic bytes.
+  if Dir["cdk.out/*.template.json"].empty?
+    require_relative "../lib/ruby_cdk"
+    Dir["examples/*/cdk.rb"].sort.each { |app_file| RubyCdk::App.build!(app_file:) }
+    RubyCdk::App.instances.each(&:synth)
+  end
+
   Templates = Dir["cdk.out/*.template.json"].sort
-  abort "nag: no templates under cdk.out; run `ruby-cdk synth` first" if Templates.empty?
+  abort "nag: no templates under cdk.out, and the examples produced none" if Templates.empty?
 
   require_relative "../lib/ruby_cdk/nag"
 
