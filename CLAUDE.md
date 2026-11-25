@@ -57,6 +57,6 @@ The table says in which wave each command starts to exist. Until then it is not 
 ## Commits
 
 - Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`), one logical change per commit.
-- A commit ends with a `Co-Authored-By` trailer naming the agent model that produced it (house convention; the exact identity is set by the repository owner).
+- No AI attribution in commits: no `Co-Authored-By` trailer, no "assisted by" notes, in the message or anywhere else. The author is the repository owner's git identity.
 - Never commit with a red `bundle exec rake`.
 - Do not commit build output: `cdk.out/`, `coverage/`, `pkg/` and `sorbet/cache/` are git-ignored; keep it that way. `Gemfile.lock` is committed.
