@@ -88,8 +88,8 @@ Mutations.define("uploader/a_present_key_uploaded_again", "test/unit/assets/uplo
   RubyCdk::Assets::Uploader.class_eval do
     private
 
-    def put_unless_present(record, bucket)
-      @store.put(bucket, record.key, body: RubyCdk::Assets::Zipper.build(record), expected_owner: @owner)
+    def put_object_unless_present(key, bucket, body)
+      @store.put(bucket, key, body: body.call, expected_owner: @owner)
       :uploaded
     end
   end

@@ -15,8 +15,6 @@
 # they stayed green (it survived), anything else when it could not be run.
 require_relative "aws_isolation"
 
-Tools::AwsIsolation.scrub!
-
 require "minitest"
 
 module Mutations
@@ -44,6 +42,10 @@ end
 Dir[File.expand_path("../test/mutations/*.rb", __dir__)].sort.each { |path| require path }
 
 if $PROGRAM_NAME == __FILE__
+  # Only the script scrubs, never the require: rakelib/mutation.rake loads this
+  # file while rake starts, and a scrub here would strip AWS_* and RUBY_CDK_*
+  # from every rake invocation, `rake integration` and `rake sweep` included.
+  Tools::AwsIsolation.scrub!
   name = ARGV.first
   if ARGV.length != 1 || !Mutations::ALL.key?(name)
     puts "usage: ruby -Itest tools/mutation_check.rb <mutation>"
