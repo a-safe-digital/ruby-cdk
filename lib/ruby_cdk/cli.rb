@@ -195,6 +195,18 @@ module RubyCdk
           return Cli::USAGE
         end
 
+        # A command named with a help flag prints its own help and succeeds,
+        # as the CDK's parser answers `cdk deploy --help` (yargs, wired in
+        # cli.ts of aws-cdk-cli). Thor answers `ruby-cdk help COMMAND` and
+        # maps --help at the head of the line, but takes the flag after a
+        # command for an unknown switch, which is what the audit found. All
+        # four of Thor's own help flags are answered, not only the two the
+        # audit named.
+        if words.drop(1).any? { |word| Thor::HELP_MAPPINGS.include?(word) }
+          command_help(shell, named)
+          return Cli::SUCCESS
+        end
+
         # Thor shifts the command's word off the array it is given.
         code = dispatch(nil, words, nil, shell:)
         # A command answers its exit code. Thor's own help answers whatever it printed with.

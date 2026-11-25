@@ -249,6 +249,55 @@ class CliNewTest < CliHelpers::TestCase
     super
   end
 
+  # --- the help of every command (audit S5)
+
+  def test_h_and_help_print_a_command_s_help_and_succeed
+    (RubyCdk::CLI.all_commands.keys + [ "list" ]).each do |command|
+      [ "-h", "--help" ].each do |flag|
+        result = cli(command, flag)
+
+        assert_equal 0, result.code, "ruby-cdk #{command} #{flag}"
+        assert result.out.string.start_with?("Usage:"), "ruby-cdk #{command} #{flag} prints usage"
+      end
+    end
+  end
+
+  def test_a_help_flag_between_other_words_still_answers_the_help
+    result = cli("deploy", "--all", "--help")
+
+    assert_equal 0, result.code
+    assert result.out.string.start_with?("Usage:")
+  end
+
+  def test_the_help_of_synth_is_pinned
+    expected = <<~OUTPUT
+      Usage:
+        ruby-cdk synth [STACK...]
+
+      Options:
+            [--no-validate]                                # Skip the schema rules (V1 to V23). The tree's own rules (V2, V13) still run
+        -a, [--app=APP]                                    # The app file, which creates exactly one RubyCdk::App. A relative path is read from the working directory
+                                                           # Default: cdk.rb
+        -o, [--out=OUT]                                    # Directory the templates and manifest.json are written to. An App the app file creates with out_dir: keeps its own
+                                                           # Default: cdk.out
+            [--profile=PROFILE]                            # The AWS profile that selects the credentials
+            [--region=REGION]                              # The AWS region the clients are built for. A stack with an env deploys only into that region
+            [--account=ACCOUNT]                            # The 12-digit account the credentials must be for. Required with --yes for a stack without env
+        -y, [--yes], [--no-yes], [--skip-yes]              # Deploy or destroy without asking for approval
+        -f, [--force]                                      # Deploy even when the template and the parameters are unchanged; with destroy, do not ask for confirmation; with new, write into the directory named only when it is empty
+        -q, [--quiet], [--no-quiet], [--skip-quiet]        # Print no progress, and for synth no template
+        -v, [--verbose], [--no-verbose], [--skip-verbose]  # Say what the command decides, and print the backtrace of an error
+        -j, [--json], [--no-json], [--skip-json]           # Print the result as JSON on standard output; what is for a person goes to standard error
+            [--color], [--no-color], [--skip-color]        # Use colour even when standard output is not a terminal. --no-color never uses it
+
+      Synthesize the app into --out, and print the template of the stack when there is one
+    OUTPUT
+
+    assert_equal expected, cli("synth", "--help").out.string
+    assert_equal expected, cli("synth", "-h").out.string
+    assert_equal 0, cli("synth", "--help").code
+  end
+
   # --- helpers
 
   private
