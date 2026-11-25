@@ -1,0 +1,209 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "RoleResource": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              }
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        ],
+        "RoleName": "app-notes-role-00e2ce6c"
+      }
+    },
+    "NotesResource": {
+      "Type": "AWS::DynamoDB::Table",
+      "DeletionPolicy": "RetainExceptOnCreate",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "TableName": "app-notes-81e5e165",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true
+        }
+      }
+    },
+    "AssetsResource": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "RetainExceptOnCreate",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        }
+      }
+    },
+    "FnLogGroupResource": {
+      "Type": "AWS::Logs::LogGroup",
+      "DeletionPolicy": "RetainExceptOnCreate",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/app-notes-fn-9c6a667c",
+        "RetentionInDays": 731
+      }
+    },
+    "FnResource": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": [
+        "RoleResource",
+        "FnLogGroupResource"
+      ],
+      "Properties": {
+        "FunctionName": "app-notes-fn-9c6a667c",
+        "Code": {
+          "S3Bucket": "ruby-cdk-assets-111122223333-eu-central-1",
+          "S3Key": "1fb51abebc5bebde626ccb139ee0402ca7ee14acad814f65f531e6e06fe5109c.zip"
+        },
+        "Handler": "app.handler",
+        "Runtime": "ruby3.4",
+        "Role": {
+          "Fn::GetAtt": [
+            "RoleResource",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "RoleDefaultPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable"
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "NotesResource",
+                  "Arn"
+                ]
+              }
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*"
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "AssetsResource",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "AssetsResource",
+                          "Arn"
+                        ]
+                      },
+                      "/*"
+                    ]
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "PolicyName": "RoleDefaultPolicy",
+        "Roles": [
+          {
+            "Ref": "RoleResource"
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "FunctionName": {
+      "Value": {
+        "Ref": "FnResource"
+      },
+      "Description": "The name of the function"
+    },
+    "FunctionArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "FnResource",
+          "Arn"
+        ]
+      },
+      "Description": "The ARN of the function"
+    },
+    "TableName": {
+      "Value": "app-notes-81e5e165",
+      "Description": "The name of the notes table"
+    },
+    "BucketName": {
+      "Value": {
+        "Ref": "AssetsResource"
+      },
+      "Description": "The name of the assets bucket"
+    }
+  }
+}

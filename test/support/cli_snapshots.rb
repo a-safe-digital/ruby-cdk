@@ -18,7 +18,11 @@ module RubyCdk
       # The examples with committed fixtures, each with the app file that
       # builds it.
       def examples
-        { "hello" => "examples/hello/cdk.rb" }
+        {
+          "hello" => "examples/hello/cdk.rb",
+          "lambda" => "examples/lambda/cdk.rb",
+          "app" => "examples/app/cdk.rb"
+        }
       end
 
       def fixtures_root

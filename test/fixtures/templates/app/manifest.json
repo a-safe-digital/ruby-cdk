@@ -1,0 +1,19 @@
+{
+  "ruby_cdk_version": "0.0.1",
+  "schema_version": "resource specification 273.0.0, model sha256:72a25b4155afd84bfb1f287157d0ca45b2354799a22a2e03e09865975b13cab9, model format 1",
+  "stacks": [
+    {
+      "name": "app",
+      "template": "app.template.json",
+      "template_hash": "sha256:35a52c5cf38ed7ecdfe352f65e88ececce36f2af9d58f24dc1598818778167d1",
+      "env": {
+        "account": "111122223333",
+        "region": "eu-central-1"
+      },
+      "dependencies": [],
+      "assets": [
+        "sha256:1fb51abebc5bebde626ccb139ee0402ca7ee14acad814f65f531e6e06fe5109c"
+      ]
+    }
+  ]
+}
