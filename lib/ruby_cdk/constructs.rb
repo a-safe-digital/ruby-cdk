@@ -48,3 +48,4 @@ end
 require_relative "constructs/policy_statement"
 require_relative "constructs/grant"
 require_relative "constructs/role"
+require_relative "constructs/bucket"
