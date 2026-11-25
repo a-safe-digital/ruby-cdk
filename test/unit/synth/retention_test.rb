@@ -8,8 +8,14 @@ require "support/core_helpers"
 class SynthRetentionTest < CoreHelpers::TestCase
   RETAINED = {
     "Bucket" => "AWS::S3::Bucket", "Table" => "AWS::DynamoDB::Table", "LogGroup" => "AWS::Logs::LogGroup",
-    "Key" => "AWS::KMS::Key", "Volume" => "AWS::EC2::Volume", "Repository" => "AWS::ECR::Repository",
-    "UserPool" => "AWS::Cognito::UserPool", "Stream" => "AWS::Kinesis::Stream", "Domain" => "AWS::OpenSearchService::Domain"
+    "LogStream" => "AWS::Logs::LogStream", "Key" => "AWS::KMS::Key", "Volume" => "AWS::EC2::Volume",
+    "Repository" => "AWS::ECR::Repository", "UserPool" => "AWS::Cognito::UserPool",
+    "Stream" => "AWS::Kinesis::Stream", "Domain" => "AWS::OpenSearchService::Domain",
+    "LegacyDomain" => "AWS::Elasticsearch::Domain", "Database" => "AWS::Glue::Database",
+    "Vault" => "AWS::Backup::BackupVault", "ReportGroup" => "AWS::CodeBuild::ReportGroup",
+    "ScheduleGroup" => "AWS::Scheduler::ScheduleGroup", "DocDBCluster" => "AWS::DocDB::DBCluster",
+    "DocDBInstance" => "AWS::DocDB::DBInstance", "FsxFileSystem" => "AWS::FSx::FileSystem",
+    "ConfigurationVersion" => "AWS::AppConfig::HostedConfigurationVersion"
   }.freeze
 
   SNAPSHOTTED = { "DBInstance" => "AWS::RDS::DBInstance", "DBCluster" => "AWS::RDS::DBCluster" }.freeze
@@ -17,7 +23,8 @@ class SynthRetentionTest < CoreHelpers::TestCase
   DELETED = {
     "Queue" => "AWS::SQS::Queue", "Topic" => "AWS::SNS::Topic", "Secret" => "AWS::SecretsManager::Secret",
     "Function" => "AWS::Lambda::Function", "Role" => "AWS::IAM::Role", "FileSystem" => "AWS::EFS::FileSystem",
-    "HostedZone" => "AWS::Route53::HostedZone", "Redshift" => "AWS::Redshift::Cluster", "Cache" => "AWS::ElastiCache::CacheCluster"
+    "HostedZone" => "AWS::Route53::HostedZone", "Redshift" => "AWS::Redshift::Cluster",
+    "Cache" => "AWS::ElastiCache::CacheCluster", "Deployment" => "AWS::ApiGateway::Deployment"
   }.freeze
 
   def policies_of(body)

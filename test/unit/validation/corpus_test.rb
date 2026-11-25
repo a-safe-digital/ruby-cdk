@@ -35,6 +35,9 @@ class ValidationCorpusTest < Minitest::Test
     unexplained = check.errors.reject { |path, issue| explained?(exceptions, path, issue) }
     assert_empty unexplained, "the corpus was rejected by this tool, and CloudFormation accepted it: #{check}"
 
+    # 2026-11-25, lead-approved count update: W2.5 completed core's stateful list with the ten types the CDK retains, so V15 counts 16 more.
+    assert_equal({ "V1" => 220, "V15" => 119 }, check.warnings_by_rule)
+
     loose = check.warnings_by_rule.keys - DESIGNED_WARNINGS
     assert_empty loose, "a warning the rules were not made to give: #{check}"
     assert_equal 0, check.unparseable.size

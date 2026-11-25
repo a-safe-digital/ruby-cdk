@@ -7,8 +7,12 @@ require "support/core_helpers"
 class CoreStatefulTest < CoreHelpers::TestCase
   def test_the_types_the_cdk_retains_are_the_types_retained_here
     %w[
-      AWS::S3::Bucket AWS::DynamoDB::Table AWS::Logs::LogGroup AWS::KMS::Key AWS::EC2::Volume
-      AWS::ECR::Repository AWS::Cognito::UserPool AWS::Kinesis::Stream AWS::OpenSearchService::Domain
+      AWS::S3::Bucket AWS::DynamoDB::Table AWS::Logs::LogGroup AWS::Logs::LogStream AWS::KMS::Key
+      AWS::EC2::Volume AWS::ECR::Repository AWS::Cognito::UserPool AWS::Kinesis::Stream
+      AWS::OpenSearchService::Domain AWS::Elasticsearch::Domain AWS::Glue::Database
+      AWS::Backup::BackupVault AWS::CodeBuild::ReportGroup AWS::Scheduler::ScheduleGroup
+      AWS::DocDB::DBCluster AWS::DocDB::DBInstance AWS::FSx::FileSystem
+      AWS::AppConfig::HostedConfigurationVersion
     ].each do |type|
       assert_equal %w[ RetainExceptOnCreate Retain ], RubyCdk::Core::Stateful.policies_for(type, default: :retain_except_on_create), type
     end
@@ -24,6 +28,7 @@ class CoreStatefulTest < CoreHelpers::TestCase
       AWS::EFS::FileSystem AWS::Route53::HostedZone AWS::Redshift::Cluster AWS::ElastiCache::CacheCluster
       AWS::S3::BucketPolicy AWS::DynamoDB::GlobalTable AWS::KMS::Alias AWS::Cognito::UserPoolClient
       AWS::RDS::DBSubnetGroup AWS::RDS::DBParameterGroup AWS::Logs::SubscriptionFilter Custom::Thing
+      AWS::ApiGateway::Deployment
     ].each do |type|
       assert_nil RubyCdk::Core::Stateful.policies_for(type, default: :retain_except_on_create), type
       refute RubyCdk::Core::Stateful.stateful?(type), type

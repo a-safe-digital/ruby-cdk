@@ -9,9 +9,13 @@ module RubyCdk
     # with no schema needed.
     #
     # The list was read in the CDK's source on 2026-11-23, at commit
-    # 78649cb7cf7399204ed63f629964779eeaa8b37a: each of these L2 constructs ends
-    # with `applyRemovalPolicy(props.removalPolicy)`, whose default is
-    # `RemovalPolicy.RETAIN`; the RDS ones pass `?? RemovalPolicy.SNAPSHOT`.
+    # 78649cb7cf7399204ed63f629964779eeaa8b37a, and completed on 2026-11-25 at
+    # commit 68b2516c09791d78b199f30e455e4670dc9cde6d: each of these L2
+    # constructs ends with `applyRemovalPolicy(props.removalPolicy)`, which
+    # defaults to `RemovalPolicy.RETAIN` (cfn-resource.ts:143), and the ones
+    # given `{ default: RemovalPolicy.RETAIN }` or RETAIN outright
+    # (AppConfig's HostedConfigurationVersion) are retained all the same; the
+    # RDS ones pass `?? RemovalPolicy.SNAPSHOT`.
     #
     # One value sets both attributes, as the CDK's removal policy does
     # (cfn-resource.ts, applyRemovalPolicy): Delete is Delete and Delete,
@@ -21,17 +25,29 @@ module RubyCdk
       # The two values of `stateful_default:`.
       DEFAULTS = %i[retain_except_on_create delete].freeze
 
-      # Retained by the CDK, and here.
+      # Retained by the CDK, and here. AWS::ApiGateway::Deployment stays out:
+      # the CDK retains it only when the app opts in with retainDeployments,
+      # whose default is false (aws-apigateway/lib/deployment.ts:35,108-109).
       RETAINED_TYPES = %w[
         AWS::S3::Bucket
         AWS::DynamoDB::Table
         AWS::Logs::LogGroup
+        AWS::Logs::LogStream
         AWS::KMS::Key
         AWS::EC2::Volume
         AWS::ECR::Repository
         AWS::Cognito::UserPool
         AWS::Kinesis::Stream
         AWS::OpenSearchService::Domain
+        AWS::Elasticsearch::Domain
+        AWS::Glue::Database
+        AWS::Backup::BackupVault
+        AWS::CodeBuild::ReportGroup
+        AWS::Scheduler::ScheduleGroup
+        AWS::DocDB::DBCluster
+        AWS::DocDB::DBInstance
+        AWS::FSx::FileSystem
+        AWS::AppConfig::HostedConfigurationVersion
       ].freeze
 
       # Snapshotted by the CDK, and here.
