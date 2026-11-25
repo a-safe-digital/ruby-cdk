@@ -28,27 +28,36 @@ The gem ships no native code, so no compiler is needed.
 
 ## Quickstart
 
-`examples/hello` is the smallest useful app: one stack with one S3 bucket that stays private — public access blocked on all four settings, encrypted at rest — with a parameter for versioning and an output for the bucket's name. The app file, `cdk.rb`:
+With the gem installed (above), `ruby-cdk new` scaffolds the smallest useful app — one stack, one S3 bucket that stays private, a parameter, and the three commands in its README:
+
+```sh
+ruby-cdk new my-app
+cd my-app
+bundle install --local    # ruby-cdk is not on rubygems.org yet: this resolves the
+                          # Gemfile from the gem installed on this machine, nothing more
+```
+
+The directory holds the app file, `cdk.rb` — one `RubyCdk::App`, one stack:
 
 ```ruby
 require "ruby-cdk"
-require_relative "hello/stack"
+require_relative "my_app/my_app_stack"
 
 RubyCdk::App.new do |app|
-  Hello::Stack.new(app, "hello")
+  MyApp::Stack.new(app, "my-app")
 end
 ```
 
-The stack, `hello/stack.rb`, declares what the template holds:
+and the stack, `my_app/my_app_stack.rb`, declares what the template holds — a parameter for versioning, and a bucket with public access blocked on all four settings and AES256 encryption:
 
 ```ruby
-module Hello
+module MyApp
   class Stack < RubyCdk::Stack
     def build
       versioning = parameter("Versioning", type: "String", default: "Suspended", allowed_values: [ "Suspended", "Enabled" ],
         description: "Whether the bucket keeps every version of an object")
 
-      bucket = resource("Bucket", "AWS::S3::Bucket", properties: {
+      resource("Bucket", "AWS::S3::Bucket", properties: {
         "BucketEncryption" => {
           "ServerSideEncryptionConfiguration" => [
             { "ServerSideEncryptionByDefault" => { "SSEAlgorithm" => "AES256" } }
@@ -62,20 +71,18 @@ module Hello
         },
         "VersioningConfiguration" => { "Status" => Fn.ref(versioning) }
       })
-
-      output("BucketName", value: Fn.ref(bucket), description: "The name of the bucket")
     end
   end
 end
 ```
 
-Synthesize from the example's directory:
+Synthesize it:
 
 ```sh
-ruby-cdk synth
+bundle exec ruby-cdk synth
 ```
 
-This validates the tree, writes `cdk.out/hello.template.json` and `cdk.out/manifest.json`, and prints the template, with a `Synthesis time: …` line on standard error first:
+This validates the tree, writes `cdk.out/my-app.template.json` and `cdk.out/manifest.json`, and prints the template, with a `Synthesis time: …` line on standard error first:
 
 ```json
 {
@@ -119,27 +126,21 @@ This validates the tree, writes `cdk.out/hello.template.json` and `cdk.out/manif
         }
       }
     }
-  },
-  "Outputs": {
-    "BucketName": {
-      "Value": {
-        "Ref": "Bucket"
-      },
-      "Description": "The name of the bucket"
-    }
   }
 }
 ```
 
+`ruby-cdk validate` runs the same rules without writing anything (its section is below), so a template CloudFormation would reject is caught here, before any deploy.
+
 Deploy it:
 
 ```sh
-ruby-cdk deploy
+bundle exec ruby-cdk deploy
 ```
 
 The command prints the target — account, region, profile — before the first request, creates the change set, prints every change in it and the IAM capabilities it would add, and then asks, in a terminal:
 
-    Deploy these changes to stack hello in account 123456789012 (eu-central-1)?
+    Deploy these changes to stack my-app in account 123456789012 (eu-central-1)?
 
 Yes executes the change set and follows the operation, printing each event as it arrives and the outputs at the end. Anything else stops: the change set is deleted, and a not-yet-created stack is deleted with it, so a refused deploy leaves nothing behind. A stack without an `env` deploys wherever your credentials point, after the command prints the target. Useful options:
 
@@ -151,7 +152,9 @@ Yes executes the change set and follows the operation, printing each event as it
 - `--force` — deploy even when the deployed template, parameters and tags are unchanged (unchanged means the deploy is skipped).
 - `--all`, `-e/--exclusively` — every stack of the app in dependency order, or only the ones named.
 
-`ruby-cdk destroy` prints what the stack retains, then asks you to type the stack's name — a yes/no is not enough for an irreversible act — and deletes it. `--yes` skips the question; a termination-protected stack is refused.
+`bundle exec ruby-cdk destroy` prints what the stack retains, then asks you to type the stack's name — a yes/no is not enough for an irreversible act — and deletes it. `--yes` skips the question; a termination-protected stack is refused.
+
+`examples/hello` is this same app kept by hand, with more commentary on what each line does, and the generated project's README carries the three commands with the notes a first deploy needs: where a stack without an `env` deploys, what deploy asks, and that an asset (`asset.zip`) needs a pinned env, because the bucket its zip lands in is named after the account and the region and synthesis never calls AWS to discover them.
 
 ## Validation before deploy
 
@@ -269,14 +272,14 @@ That test runs:
 
 Works today:
 
-- `ruby-cdk synth`, `validate`, `ls`, `deploy`, `destroy`, `bootstrap` (`ruby-cdk help COMMAND` for each).
+- `ruby-cdk synth`, `validate`, `ls`, `deploy`, `destroy`, `new`, `bootstrap` (`ruby-cdk help COMMAND` for each). `new PROJECT` scaffolds an app: `cdk.rb`, one stack with one private bucket, a Gemfile, `.gitattributes` and `.gitignore`.
 - Schema-backed synthesis with the normalizer and rules V1–V23.
 - File assets with content hashing, zipping at deploy, and the bootstrap bucket; templates above 51,200 bytes deploy by URL.
 - The nag rule pack — seventeen security rules over every template of `cdk.out`, run with `rake nag`, suppressed per resource or in `.ruby-cdk/nag.yml`.
 - The test kit, `RubyCdk::Test`, with the CDK's assertions ported.
 - Deploy and destroy run end to end in CI against an emulator that speaks CloudFormation's real API (`rake integration`).
 
-Next: `ruby-cdk diff`, `ruby-cdk new` for scaffolding, and curated L2 constructs — everything in the examples today is an L1 resource written with CloudFormation's own property names. After that, context providers (lookups of existing resources) and hotswap.
+Next: `ruby-cdk diff` and curated L2 constructs — everything in the examples today is an L1 resource written with CloudFormation's own property names. After that, context providers (lookups of existing resources) and hotswap.
 
 And the honest part: this is 0.0.1. The APIs — `Stack`, `App`, `Test`, the CLI options — may still change between versions, the `--strict-types` defect above is real, and nothing is published to rubygems.org. Pin the commit you build from.
 

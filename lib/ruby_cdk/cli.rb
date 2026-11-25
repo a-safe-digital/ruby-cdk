@@ -18,6 +18,7 @@ require_relative "cli/aws"
 require_relative "cli/synth"
 require_relative "cli/list"
 require_relative "cli/validate"
+require_relative "cli/new"
 require_relative "cli/operation"
 require_relative "cli/bootstrap"
 require_relative "cli/report"
@@ -67,7 +68,8 @@ module RubyCdk
     class_option :yes, type: :boolean, aliases: "-y", desc: "Deploy or destroy without asking for approval"
 
     class_option :force, type: :boolean, aliases: "-f",
-      desc: "Deploy even when the template and the parameters are unchanged; with destroy, do not ask for confirmation"
+      desc: "Deploy even when the template and the parameters are unchanged; with destroy, do not ask for confirmation; " \
+        "with new, write into the directory named only when it is empty"
 
     class_option :quiet, type: :boolean, aliases: "-q", desc: "Print no progress, and for synth no template"
 
@@ -134,6 +136,12 @@ module RubyCdk
       desc: "Destroy only the stacks named, not the ones that depend on them"
     def destroy(*names)
       Cli::Operation.new(session, kind: :destroy).call(names)
+    end
+
+
+    desc "new PROJECT", "Create the directory PROJECT with the app scaffold: cdk.rb, one stack, the Gemfile and the git files"
+    def new(project = nil)
+      Cli::New.run(session, project)
     end
 
     desc "bootstrap", "Deploy the tool's asset bucket as the ruby-cdk-bootstrap stack"
