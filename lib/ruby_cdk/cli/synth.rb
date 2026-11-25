@@ -22,6 +22,7 @@ module RubyCdk
       def self.run(session, names)
         manifest = session.manifest
         session.say_synthesis_time
+        session.say_warnings(manifest)
         entries = named(manifest.entries, names, session)
         io = session.io
         io.debug("synthesized #{manifest.entries.length} stack(s) into #{File.expand_path(manifest.out_dir)}")

@@ -18,7 +18,8 @@ module RubyCdk
       # command does not take, or that was not given, is nil; a boolean that
       # was given is true.
       Options = Data.define(:app, :out, :profile, :region, :account, :yes, :force, :quiet, :verbose, :json, :color,
-        :long, :all, :exclusively, :execute, :on_failure, :parameters, :tags, :outputs_file)
+        :long, :all, :exclusively, :execute, :on_failure, :parameters, :tags, :outputs_file,
+        :no_validate, :strict_types, :deployer_arn)
 
       # Thor's options as Options.
       def self.options_from(given)
@@ -60,7 +61,58 @@ module RubyCdk
       def manifest
         @manifest ||= begin
           started = clock
-          app.synth.tap { @synthesis_seconds = clock - started }
+          synth_app.tap { @synthesis_seconds = clock - started }
+        end
+      end
+
+      # --no-validate asks the pipeline to skip the schema rules: the tree's own
+      # rules (V2, V13) still run, and the report command is how the rules are
+      # seen without writing. The pipeline is asked with App#synth(validate:).
+      # Until the pipeline takes the keyword (the core track is adding it), the
+      # flag says so under --verbose and the validators still run: this method
+      # flips to the keyword the moment the pipeline accepts it, and the call
+      # above is the only place that changes.
+      def synth_app
+        return app.synth(validate: false) if options.no_validate && pipeline_takes_validate?
+
+        io.debug("--no-validate: the pipeline does not take validate: yet, so the schema rules still ran") if options.no_validate
+        app.synth
+      end
+
+      # The types architecture section 7 retains, as V15 is built with.
+      def stateful_types
+        Core::Stateful::RETAINED_TYPES + Core::Stateful::SNAPSHOT_TYPES
+      end
+
+      # --strict-types: the validators are registered once at umbrella load, so
+      # strictness is a re-registration. Everything the umbrella registered is
+      # taken out, and the same list built with strict_types: true goes in. The
+      # pipeline's own V2 and V13 are left alone: the tree registers those
+      # itself, and they were never taken out. Nothing is restored: a process
+      # runs one command.
+      def register_strict_validators
+        return if @strict_registered
+
+        RubyCdk::Synth.validators.each do |validator|
+          next if validator.is_a?(RubyCdk::Synth::Rules::LogicalIds) || validator.is_a?(RubyCdk::Synth::Rules::StackName)
+
+          RubyCdk::Synth.unregister_validator(validator)
+        end
+        RubyCdk::Validation.validators(strict_types: true, stateful_types: stateful_types)
+          .each { |validator| RubyCdk::Synth.register_validator(validator) }
+        @strict_registered = true
+        io.debug("validators re-registered with strict_types: V1 makes an unknown type an error")
+      end
+
+      # The pipeline's warnings, once the pipeline carries them apart (the core
+      # track is adding the list, and the manifest is what synthesize_app hands
+      # over). Nothing under --quiet or --json, like the synthesis-time line.
+      def say_warnings(manifest)
+        return if options.quiet || options.json
+        return unless manifest.respond_to?(:warnings)
+
+        Array(manifest.warnings).each do |warning|
+          io.say("warning #{warning.rule} #{warning.path}: #{warning.message}")
         end
       end
 
@@ -168,6 +220,11 @@ module RubyCdk
 
       def clock
         Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      end
+
+      # True when the pipeline's synth takes the validate keyword.
+      def pipeline_takes_validate?
+        app.method(:synth).parameters.any? { |_kind, name| name == :validate }
       end
 
       # The app file, or the error placed where it happened.

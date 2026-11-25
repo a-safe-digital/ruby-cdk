@@ -16,6 +16,7 @@ require_relative "cli/session"
 require_relative "cli/aws"
 require_relative "cli/synth"
 require_relative "cli/list"
+require_relative "cli/validate"
 require_relative "cli/operation"
 require_relative "cli/report"
 
@@ -87,8 +88,18 @@ module RubyCdk
     map "--version" => :version
 
     desc "synth [STACK...]", "Synthesize the app into --out, and print the template of the stack when there is one"
+    method_option :no_validate, type: :boolean,
+      desc: "Skip the schema rules (V1 to V23). The tree's own rules (V2, V13) still run"
     def synth(*names)
       Cli::Synth.run(session, names)
+    end
+
+    desc "validate [STACK...]", "Report what the schema rules say about the templates, without writing anything"
+    method_option :all, type: :boolean, desc: "Validate every stack of the app"
+    method_option :strict_types, type: :boolean,
+      desc: "An unknown resource type (rule V1) is an error, not a warning"
+    def validate(*names)
+      Cli::Validate.run(session, names)
     end
 
     desc "ls [STACK...]", "List the stacks of the app, one per line"
