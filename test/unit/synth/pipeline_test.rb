@@ -199,6 +199,46 @@ class SynthPipelineTest < CoreHelpers::TestCase
       "the keys of a type the model does not know are written verbatim"
   end
 
+  # --- validate: false, the --no-validate of the command line
+
+  def test_run_with_validate_false_skips_the_validators_but_not_the_value_model
+    stack = build_stack { resource("A", "AWS::SNS::Topic", Nope: 1) }
+
+    skipped = Synth.run(stack, validate: false)
+
+    assert_empty skipped.issues
+    assert_empty skipped.warnings
+    assert_equal 1, skipped.template["Resources"]["A"]["Properties"]["Nope"], "the template is written whatever the rules would have said"
+
+    validated = Synth.run(stack)
+
+    assert_equal [ "V3" ], validated.issues.map(&:rule), "the invented property is caught when validation runs"
+
+    unwriteable = build_stack { resource("B", "AWS::SNS::Topic", DisplayName: Object.new) }
+
+    still = Synth.run(unwriteable, validate: false)
+
+    assert_equal [ "V0" ], still.issues.map(&:rule), "the value model is not validation: V0 fires with the validators skipped"
+  end
+
+  def test_synthesize_app_with_validate_false_writes_what_the_default_refuses
+    no_validate = build_stack { resource("A", "AWS::SNS::Topic", Nope: 1) }
+    manifest = no_validate.app.synth(validate: false)
+
+    assert_kind_of Synth::Manifest, manifest
+    assert_equal [ "blog" ], manifest.stacks.map(&:name)
+    assert_includes File.binread(File.join(manifest.out_dir, "blog.template.json")), '"Nope": 1'
+    assert_equal manifest.bytes, File.binread(manifest.path)
+
+    validated = build_stack { resource("A", "AWS::SNS::Topic", Nope: 1) }
+
+    error = assert_raises(RubyCdk::ValidationError) { validated.app.synth }
+
+    assert_match(/\AV3 Resources\.A\.Properties\.Nope: /, error.message)
+    assert_includes RubyCdk::App.instance_method(:synth).parameters.map(&:last), :validate,
+      "the command line asks App#synth with validate:, and the pipeline answers"
+  end
+
   # --- run and synthesize
 
   def test_run_never_raises_and_synthesize_raises_once_with_every_issue

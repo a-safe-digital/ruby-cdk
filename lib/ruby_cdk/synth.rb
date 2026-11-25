@@ -125,7 +125,11 @@ module RubyCdk
       #   normalize the registered normalizers, in order
       #   serialize the template is put in the order it is written in
       #   validate  the registered validators, on exactly that template
-      def run(stack)
+      #
+      # validate: false skips the validators: no issues and no warnings from
+      # them. The value model is not validation — the resolver's V0 issues fire
+      # either way, because what they reject cannot be written at all.
+      def run(stack, validate: true)
         issues = []
         warnings = []
         stack.prepare_tree                                        # prepare
@@ -137,14 +141,16 @@ module RubyCdk
           end
         end
         template = Serializer.ordered(template)                   # serialize, the template as it is written
-        validators.each do |validator|                            # validate
-          Array(validator.call(context(stack, template, issues))).each do |issue|
-            # A warning is an issue that answers warning? with true; this tool
-            # does not name the class, the answer is the contract.
-            if issue.respond_to?(:warning?) && issue.warning?
-              warnings << issue
-            else
-              issues << issue
+        if validate                                               # validate
+          validators.each do |validator|
+            Array(validator.call(context(stack, template, issues))).each do |issue|
+              # A warning is an issue that answers warning? with true; this tool
+              # does not name the class, the answer is the contract.
+              if issue.respond_to?(:warning?) && issue.warning?
+                warnings << issue
+              else
+                issues << issue
+              end
             end
           end
         end
@@ -165,8 +171,12 @@ module RubyCdk
       # created. One ValidationError holds every issue of every stack, and
       # nothing is written when there is one. A warning rides along on its
       # result, which the manifest takes and ignores.
-      def synthesize_app(app)
-        results = app.stacks.map { |stack| run(stack) }
+      #
+      # validate: false, the --no-validate of the command line, skips the
+      # validators on every stack: the templates are written whatever the
+      # schema rules would have said. The value model still is.
+      def synthesize_app(app, validate: true)
+        results = app.stacks.map { |stack| run(stack, validate: validate) }
         failing = results.select { |result| result.issues.any? }
         if failing.any?
           raise ValidationError.new(failing.flat_map { |result| qualify(result, results.length > 1) })
@@ -235,8 +245,8 @@ module RubyCdk
   end
 
   class App
-    def synth
-      Synth.synthesize_app(self)
+    def synth(validate: true)
+      Synth.synthesize_app(self, validate: validate)
     end
   end
 end

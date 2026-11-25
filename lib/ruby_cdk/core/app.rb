@@ -134,10 +134,12 @@ module RubyCdk
     end
 
     # Runs every phase on every stack and writes the templates and the manifest.
+    # validate: false skips the registered validators; the value model of §4
+    # still applies, so a template is always plain data.
     #
     # Declared here because it is the tree's contract. The synth component
     # implements it by reopening this class: core does not depend on synth.
-    def synth
+    def synth(validate: true)
       raise NotImplementedError, "added by the synth component"
     end
   end
