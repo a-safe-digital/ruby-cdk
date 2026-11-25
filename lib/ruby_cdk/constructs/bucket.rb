@@ -79,6 +79,12 @@ module RubyCdk
           PublicAccessBlockConfiguration: @public_access_block)
       end
 
+      # The logical ID of the AWS::S3::Bucket under this construct, so that the
+      # bucket can sit in another resource's depends_on:.
+      def logical_id
+        @resource.logical_id
+      end
+
       # The bucket's ARN.
       def arn
         Fn.get_att(@resource, "Arn")

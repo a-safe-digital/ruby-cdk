@@ -84,6 +84,12 @@ module RubyCdk
           Description: @description)
       end
 
+      # The logical ID of the AWS::IAM::Role under this construct, so that the
+      # role can sit in another resource's depends_on:.
+      def logical_id
+        @resource.logical_id
+      end
+
       # The role's ARN.
       def arn
         Fn.get_att(@resource, "Arn")
