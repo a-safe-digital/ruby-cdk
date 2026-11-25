@@ -67,7 +67,12 @@ module Architecture
     # Layer 4: composes components; owns no logic of its own.
     Component.new(name: :cli, layer: 4, entry: "ruby_cdk/cli", paths: %w[ruby_cdk/cli.rb ruby_cdk/cli], gems: %w[thor],
       depends_on: %i[errors values version core cfn synth schema validation assets deploy adapters diff bootstrap],
-      purpose: "The command line: options, the app file, exit codes. Calls components; implements nothing.")
+      purpose: "The command line: options, the app file, exit codes. Calls components; implements nothing."),
+
+    # Layer 5: the curated constructs, on top of everything they build through.
+    Component.new(name: :constructs, layer: 5, entry: "ruby_cdk/constructs", paths: %w[ruby_cdk/constructs.rb ruby_cdk/constructs],
+      depends_on: %i[errors values core cfn], gems: [],
+      purpose: "The curated L2 constructs (architecture section 3): one class per service under RubyCdk, each building its L1 resources through Construct#resource, with least-privilege grants. It needs no schema, because it writes CloudFormation's property names verbatim, and no pipeline, because synthesis runs the tree's own hooks; the command line already reaches everything it needs.")
   ].freeze
 
   # The umbrella: what `require "ruby-cdk"` loads. No component may require it.

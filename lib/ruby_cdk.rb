@@ -8,6 +8,7 @@ require_relative "ruby_cdk/synth"
 require_relative "ruby_cdk/schema"
 require_relative "ruby_cdk/schema/validator"
 require_relative "ruby_cdk/assets"
+require_relative "ruby_cdk/constructs"
 
 # Infrastructure as code in pure Ruby, in the style of the AWS CDK.
 #
