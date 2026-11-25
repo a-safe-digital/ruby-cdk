@@ -105,12 +105,17 @@ module RubyCdk
 
       # poller waits for a change set to be created; operation_poller follows a
       # stack operation. Both take a Poller, so a test never waits.
-      def initialize(client:, store:, output:, poller: Poller.change_set, operation_poller: Poller.operation)
+      # template_publisher places a template that does not fit a request in the
+      # stack's asset bucket: a callable of (stack, template body) that answers
+      # the URL to deploy by (architecture §8). The command line wires it; nil,
+      # and a template above the limit is refused before any request.
+      def initialize(client:, store:, output:, poller: Poller.change_set, operation_poller: Poller.operation, template_publisher: nil)
         @client = client
         @store = store
         @output = output
         @poller = poller
         @operation_poller = operation_poller
+        @template_publisher = template_publisher
         @events_unavailable = false
       end
 
@@ -122,7 +127,7 @@ module RubyCdk
         check_account(name, stack, identity, options)
 
         body = parse_template(template)
-        ensure_template_fits(template)
+        ensure_template_placeable(template)
         on_failure = on_failure_code(options.on_failure)
         capabilities = Capabilities.for(body)
         tags = tags_of(stack.tags, options.tags)
@@ -145,6 +150,11 @@ module RubyCdk
           return DeployResult.new(stack_name: name, stack_id: info.id, outcome: :no_changes, outputs: outputs_of(info))
         end
 
+        # A template too large for a request is placed in the bucket, and the
+        # change set carries its URL instead of its body. It is placed here, once
+        # a change set is actually coming: a deploy that has nothing to do never
+        # reaches this line, so the bytes are not uploaded for it.
+        template_url = place_template(stack, template)
         creating = %i[absent review].include?(state)
         output.announce("#{name}: #{creating ? "creating" : "updating"}: preparing a CloudFormation change set...")
         unless state == :absent
@@ -156,8 +166,9 @@ module RubyCdk
         end
 
         change_set = change_set_with_rejection(name, nil, creating) do
-          client.create_change_set(name, CHANGE_SET_NAME, template: template, change_set_type: creating ? :create : :update,
-            parameters: parameters.api, tags: tags, capabilities: capabilities, on_stack_failure: creating ? on_failure : nil)
+          client.create_change_set(name, CHANGE_SET_NAME, template: template_url ? nil : template,
+            change_set_type: creating ? :create : :update, parameters: parameters.api, tags: tags, capabilities: capabilities,
+            on_stack_failure: creating ? on_failure : nil, template_url: template_url)
         end
         change_set = wait_for_change_set(name, change_set.id)
 
@@ -270,7 +281,7 @@ module RubyCdk
 
       private
 
-      attr_reader :client, :store, :output, :poller, :operation_poller
+      attr_reader :client, :store, :output, :poller, :operation_poller, :template_publisher
 
       # --- section 13: who the credentials are for, and where the stack may go
 
@@ -333,12 +344,27 @@ module RubyCdk
         raise InvalidTemplate, "The template is not valid JSON, so CloudFormation cannot take it. Synthesize the stack again."
       end
 
-      def ensure_template_fits(template)
-        return if template.bytesize <= INLINE_TEMPLATE_LIMIT
+      # Above the inline limit the template can only deploy from the bucket, by
+      # its URL (architecture §8). Without the publisher that places it there,
+      # there is no way in, and the deploy is refused here, before any request.
+      def ensure_template_placeable(template)
+        return if template.bytesize <= INLINE_TEMPLATE_LIMIT || template_publisher
 
         raise TemplateTooLarge, "The template is #{template.bytesize} bytes, and CloudFormation takes at most " \
-          "#{INLINE_TEMPLATE_LIMIT} bytes in a request. Nothing was deployed.\n" \
-          "Upload the template through the asset bucket, which a later wave does by itself, or deploy a smaller template."
+          "#{INLINE_TEMPLATE_LIMIT} bytes in a request, so it cannot be sent in the request itself. Nothing was deployed.\n" \
+          "A template of this size is placed in the stack's asset bucket first, and the change set then carries the " \
+          "file's address instead of the template. To do that, the deployer has to be built with a template publisher " \
+          "that places the template in the bucket and answers its address; the `ruby-cdk deploy` command wires one. " \
+          "A template that fits in the request needs no publisher."
+      end
+
+      # The address to deploy a template by, or nil when it goes in the request.
+      # The engine knows the publisher only as the callable the command line
+      # wired; which bucket the template lands in is its business, not this one.
+      def place_template(stack, template)
+        return nil if template.bytesize <= INLINE_TEMPLATE_LIMIT
+
+        template_publisher.call(stack, template)
       end
 
       def on_failure_code(value)

@@ -129,7 +129,12 @@ module RubyCdk
         Kernel.raise NotImplementedError
       end
 
-      def create_change_set(name, change_set_name, template:, change_set_type:, parameters:, tags:, capabilities:, on_stack_failure: nil)
+      # template is the JSON text of the template, sent inline; template_url,
+      # when given, is the URL of the template placed in the bucket, and
+      # template is nil then: CloudFormation takes one or the other, never
+      # both (architecture §8).
+      def create_change_set(name, change_set_name, template:, change_set_type:, parameters:, tags:, capabilities:, on_stack_failure: nil,
+        template_url: nil)
         Kernel.raise NotImplementedError
       end
 

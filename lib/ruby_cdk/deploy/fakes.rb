@@ -42,7 +42,8 @@ module RubyCdk
 
       # A change set as the fake keeps it. empty marks one CloudFormation would
       # refuse: created for a stack whose template is already the new one.
-      ChangeSetRecord = Struct.new(:id, :type, :template, :parameters, :tags, :capabilities, :on_stack_failure, :empty, keyword_init: true)
+      ChangeSetRecord = Struct.new(:id, :type, :template, :template_url, :parameters, :tags, :capabilities, :on_stack_failure,
+        :empty, keyword_init: true)
 
       # The CloudFormation port, scripted.
       class CfnClient
@@ -163,20 +164,23 @@ module RubyCdk
         end
 
         def create_change_set(name, change_set_name, template:, change_set_type:, parameters:, tags:, capabilities:,
-          on_stack_failure: nil)
+          on_stack_failure: nil, template_url: nil)
           scripted(:create_change_set, name, change_set_name, template: template, change_set_type: change_set_type,
-            parameters: parameters, tags: tags, capabilities: capabilities, on_stack_failure: on_stack_failure) do
+            parameters: parameters, tags: tags, capabilities: capabilities, on_stack_failure: on_stack_failure,
+            template_url: template_url) do
             id = "arn:aws:cloudformation:#{REGION}:#{ACCOUNT}:changeSet/#{change_set_name}/#{next_number}"
             record = lookup(name)
             # CloudFormation refuses a change set that would change nothing: the
             # set is created FAILED, with the reason (the CDK's own fake marks
             # it the same way, fake-cloudformation.ts). Nothing changes only
             # when the template, the parameters and the tags are all the same.
-            # A test that wants another answer scripts it.
+            # A template placed in the bucket cannot be compared here, so its
+            # change set is never marked empty. A test that wants another
+            # answer scripts it.
             new_parameters = pairs_of(parameters, record)
-            unchanged = change_set_type == :update && record && record.template == template &&
+            unchanged = template_url.nil? && change_set_type == :update && record && record.template == template &&
               new_parameters == (record.parameters || {}) && tags == (record.tags || [])
-            @change_sets[id] = ChangeSetRecord.new(id: id, type: change_set_type, template: template,
+            @change_sets[id] = ChangeSetRecord.new(id: id, type: change_set_type, template: template, template_url: template_url,
               parameters: new_parameters, tags: tags, capabilities: capabilities,
               on_stack_failure: on_stack_failure, empty: unchanged)
             bring_into_review(name, template, parameters, tags) if change_set_type == :create

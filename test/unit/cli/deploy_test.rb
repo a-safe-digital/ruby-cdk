@@ -38,7 +38,8 @@ class CliDeployTest < CliHelpers::TestCase
   # the original call's keywords into the array, and a bare `super` would pass
   # them on as positionals, which the engine's fake refuses by arity.
   class WebIsRejected < RubyCdk::Deploy::Fakes::CfnClient
-    def create_change_set(name, change_set_name, template:, change_set_type:, parameters:, tags:, capabilities:, on_stack_failure: nil)
+    def create_change_set(name, change_set_name, template:, change_set_type:, parameters:, tags:, capabilities:, on_stack_failure: nil,
+      template_url: nil)
       raise RubyCdk::ChangeSetRejected, "ValidationError: web is not allowed here" if name == "web"
 
       super

@@ -61,7 +61,7 @@ module RubyCdk
       # and what Zipper.build raises while the zip is built.
       def upload(record, bucket:)
         ensure_ours(bucket)
-        put_unless_present(record, bucket)
+        put_object_unless_present(record.key, bucket, -> { Zipper.build(record) })
       end
 
       # Uploads every record and answers { uploaded:, skipped: }, the counts of
@@ -88,9 +88,24 @@ module RubyCdk
           end
 
           seen[record.key] = true
-          counts[put_unless_present(record, bucket)] += 1
+          counts[put_object_unless_present(record.key, bucket, -> { Zipper.build(record) })] += 1
         end
         counts
+      end
+
+      # Puts a body at a key with the same treatment an asset gets: the bucket
+      # checked for its owner first, then the key — one already there is left
+      # alone, and since a key here names its content, what is in the bucket is
+      # the same bytes. Answers :uploaded or :skipped.
+      #
+      # This is the path of the other thing a deploy places in the bucket: the
+      # template too large for a request (architecture §8), at
+      # templates/<stack name>/<sha256>.json, deployed by its URL.
+      #
+      # Raises BucketUnavailableError under the same rule as upload.
+      def upload_body(key, body:, bucket:)
+        ensure_ours(bucket)
+        put_object_unless_present(key, bucket, -> { body })
       end
 
       private
@@ -106,17 +121,17 @@ module RubyCdk
         raise BucketUnavailableError.new(bucket, state, @owner)
       end
 
-      # The directory is read, and the zip built, only when it is needed.
+      # The directory is read, and the body built, only when it is needed: body
+      # is a lambda, called for the put and never for a skip.
       #
       # The port answers object_exists? with a boolean, and only `true` counts
       # as present. Anything else is taken for absent and the object is put:
       # the key is content-addressed, so a needless put is harmless and a
       # wrong skip is not.
-      def put_unless_present(record, bucket)
-        key = record.key
+      def put_object_unless_present(key, bucket, body)
         return :skipped if @store.object_exists?(bucket, key, expected_owner: @owner) == true
 
-        @store.put(bucket, key, body: Zipper.build(record), expected_owner: @owner)
+        @store.put(bucket, key, body: body.call, expected_owner: @owner)
         :uploaded
       end
     end

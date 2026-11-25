@@ -118,6 +118,8 @@ class ContractTest < Minitest::Test
     end
     assert_parameter RubyCdk::Deploy::CfnClient, :create_change_set, :template, :keyreq
     assert_parameter RubyCdk::Deploy::CfnClient, :create_change_set, :on_stack_failure, :key
+    # A template placed in the bucket goes by its URL, and the body stays home (architecture §8).
+    assert_parameter RubyCdk::Deploy::CfnClient, :create_change_set, :template_url, :key
     assert_parameter RubyCdk::Deploy::CfnClient, :execute_change_set, :retain_except_on_create, :key
     assert_parameter RubyCdk::Deploy::CfnClient, :events, :after, :keyreq
     assert_parameter RubyCdk::Deploy::CfnClient, :update_termination_protection, :enabled, :keyreq

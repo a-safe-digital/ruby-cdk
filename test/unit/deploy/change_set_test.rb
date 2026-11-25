@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "digest"
 require_relative "../../support/deploy_fixtures"
 
 # The change set half of the flow of architecture section 9: waiting for the
@@ -353,21 +354,66 @@ class DeployChangeSetTest < Minitest::Test
   end
 
   def test_a_template_of_exactly_the_limit_goes_inline_and_one_byte_more_does_not
-    base = JSON.parse(TEMPLATE)
-    of_size = lambda do |size|
-      JSON.generate(base.merge("Description" => "x" * (size - JSON.generate(base.merge("Description" => "")).bytesize)))
-    end
-
-    result = deploy(client, body: of_size.call(51_200), options: unattended)
+    result = deploy(client, body: template_of_size(51_200), options: unattended)
     assert_equal :deployed, result.outcome
     assert_equal 51_200, create_request[:template].bytesize
 
     @client = nil
-    error = assert_raises(D::TemplateTooLarge) { deploy(client, body: of_size.call(51_201), options: unattended) }
+    error = assert_raises(D::TemplateTooLarge) { deploy(client, body: template_of_size(51_201), options: unattended) }
 
     assert_equal 1, D.exit_code_for(error)
     assert_match(/51201 bytes/, error.message)
+    assert_match(/template publisher/, error.message, "the message says the way in")
     assert_empty client.calls, "nothing is asked of AWS"
+  end
+
+  # The template that does not fit a request goes to the bucket, and the
+  # change set carries its address instead of the body (architecture §8).
+  def test_a_template_above_the_limit_is_published_and_the_change_set_carries_its_url
+    big = template_of_size(51_201)
+    url = "https://ruby-cdk-assets-111122223333-eu-west-1.s3.eu-west-1.amazonaws.com/templates/blog/#{Digest::SHA256.hexdigest(big)}.json"
+    given = []
+    publisher = ->(stack, template) { given << [ stack, template ]; url }
+
+    result = deploy(client, body: big, options: unattended, template_publisher: publisher)
+
+    assert_equal :deployed, result.outcome
+    assert_equal [ [ "blog", big ] ], given.map { |stack, template| [ stack.stack_name, template ] },
+      "the publisher is given the stack and the template body"
+    assert_nil create_request[:template], "the body never goes alongside the URL"
+    assert_equal url, create_request[:template_url]
+  end
+
+  def test_the_publisher_is_never_called_when_the_template_fits
+    never = ->(_stack, _template) { raise "the publisher must not be called" }
+
+    result = deploy(client, options: unattended, template_publisher: never)
+
+    assert_equal :deployed, result.outcome
+    assert_nil create_request[:template_url], "a template that fits goes in the request"
+  end
+
+  def test_a_deploy_that_has_nothing_to_do_publishes_no_template
+    big = template_of_size(51_201)
+    client.stack("blog", template: big)
+    never = ->(_stack, _template) { raise "the publisher must not be called" }
+
+    result = deploy(client, body: big, options: unattended, template_publisher: never)
+
+    assert_equal :no_changes, result.outcome
+    assert_empty client.calls_to(:create_change_set)
+  end
+
+  def test_force_deploys_an_unchanged_stack_and_publishes_its_template
+    big = template_of_size(51_201)
+    client.stack("blog", template: big)
+    url = "https://ruby-cdk-assets-111122223333-eu-west-1.s3.eu-west-1.amazonaws.com/templates/blog/again.json"
+    publisher = ->(_stack, _template) { url }
+
+    result = deploy(client, body: big, options: unattended(force: true), template_publisher: publisher)
+
+    assert_equal :deployed, result.outcome
+    assert_equal url, create_request[:template_url]
   end
 
   def test_on_failure_is_sent_for_a_creation_only
@@ -427,5 +473,11 @@ class DeployChangeSetTest < Minitest::Test
 
   def client
     @client ||= D::Fakes::CfnClient.new
+  end
+
+  # A template of exactly size bytes: the padding is in the Description.
+  def template_of_size(size)
+    base = JSON.parse(TEMPLATE)
+    JSON.generate(base.merge("Description" => "x" * (size - JSON.generate(base.merge("Description" => "")).bytesize)))
   end
 end

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require_relative "deploy/ports"
 require_relative "assets/builder"
 require_relative "assets/hasher"
@@ -51,6 +52,42 @@ module RubyCdk
       end
 
       Uploader.new(store:, owner: account).upload_all(records, bucket: bucket_name(account, stack.env.region))
+    end
+
+    # Places a template in the bucket for a deploy by its URL (architecture
+    # §8): CloudFormation takes at most 51,200 bytes of template in a request,
+    # and above that the change set carries the address of the object instead
+    # of the template. The key is templates/<stack name>/<sha256>.json, the
+    # SHA-256 of the body, so the same template lands on the same key and the
+    # uploader leaves a key that is already there alone — the second deploy of
+    # the same template puts nothing. Answers the address of the object,
+    # https://<bucket>.s3.<region>.amazonaws.com/<key>, the one the change set
+    # carries as TemplateURL.
+    #
+    # The bucket is the stack's own, named for its env as an asset bucket is,
+    # and owner must be the stack's env account, as publish requires. The
+    # command line wires this as the deployer's template publisher.
+    def self.publish_template(stack, template, store:, owner:)
+      env = stack.env
+      unless env
+        raise RubyCdk::PreconditionError,
+          "The template of stack #{stack.stack_name} is too large to go in a request, so it is placed in the asset " \
+          "bucket, and the bucket is named for the stack's env. Stack #{stack.stack_name} has no env, so there is no " \
+          "bucket to place it in. Nothing was deployed.\n" \
+          "Give the stack an env (account and region), or deploy a template that fits in a request."
+      end
+
+      account = env.account.to_s
+      unless owner.to_s == account
+        raise ArgumentError, "publish_template was given owner #{owner.inspect}, but the bucket is named for the stack's " \
+          "env account #{account.inspect}. Pass the resolved identity's account, and deploy a stack with an env " \
+          "only with credentials of that account."
+      end
+
+      bucket = bucket_name(account, env.region)
+      key = "templates/#{stack.stack_name}/#{Digest::SHA256.hexdigest(template)}.json"
+      Uploader.new(store:, owner: account).upload_body(key, body: template, bucket: bucket)
+      "https://#{bucket}.s3.#{env.region}.amazonaws.com/#{key}"
     end
   end
 

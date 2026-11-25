@@ -88,6 +88,20 @@ class DeployFakesTest < Minitest::Test
     assert_equal "DELETE", created.on_stack_failure
   end
 
+  # The template placed in the bucket is not a body the fake can compare, so
+  # the set keeps the URL and is never marked empty for it.
+  def test_a_change_set_created_with_a_template_url_records_it_and_no_body
+    url = "https://bucket.s3.eu-west-1.amazonaws.com/templates/blog/abc.json"
+    answer = client.create_change_set("blog", "a-name", template: nil, change_set_type: :create, parameters: [],
+      tags: [], capabilities: [], template_url: url)
+
+    record = client.change_sets[answer.id]
+    assert_equal url, record.template_url
+    assert_nil record.template
+    assert_equal({ template: nil, template_url: url }, client.kwargs_of(:create_change_set).first.slice(:template, :template_url))
+    assert_equal "CREATE_COMPLETE", client.describe_change_set("blog", answer.id).status
+  end
+
   def test_executing_a_change_set_ends_in_the_status_chosen_and_applies_it_to_the_stack
     client.stack("blog", id: STACK_ID, template: "{}", outputs: { "Url" => "kept" })
     answer = client.create_change_set("blog", "a-name", template: TEMPLATE, change_set_type: :update,

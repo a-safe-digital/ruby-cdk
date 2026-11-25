@@ -296,18 +296,21 @@ module RubyCdk
           stacks
         end
 
-        # Answers the change set's ID.
+        # Answers the change set's ID. A template above the inline limit goes to
+        # the bucket, and the request carries its URL instead of its body: the
+        # two never go together, as the port promises.
         def create_change_set(name, change_set_name, template:, change_set_type:, parameters:, tags:, capabilities:,
-          on_stack_failure: nil)
+          on_stack_failure: nil, template_url: nil)
           params = {
             stack_name: name,
             change_set_name: change_set_name,
-            template_body: template,
             change_set_type: change_set_type.to_s.upcase,
             parameters: parameter_pairs(parameters),
             tags: pairs(tags, :key, :value),
             capabilities: capabilities
           }
+          params[:template_body] = template if template
+          params[:template_url] = template_url if template_url
           params[:on_stack_failure] = on_stack_failure.to_s.upcase if on_stack_failure
           response = Sdk.request(rejects: true) { @raw.create_change_set(params) }
           ChangeSet.new(id: response.id || change_set_name)
