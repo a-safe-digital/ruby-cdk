@@ -174,8 +174,13 @@ module RubyCdk
 
       # The engine, with the output object the options select: Json for --json,
       # Quiet for --quiet, Human otherwise, which is also what --verbose gets.
+      # The publisher is what a template too large for a request uses: it goes
+      # into the stack's asset bucket and the change set carries its URL (§8).
       def deployer(clients)
-        Deploy::Deployer.new(client: clients.cfn, store: clients.store, output: output)
+        Deploy::Deployer.new(client: clients.cfn, store: clients.store, output: output,
+          template_publisher: lambda { |stack, template|
+            Assets.publish_template(stack, template, store: clients.store, owner: identity(clients).account)
+          })
       end
 
       # What the engine is given for a deploy.
