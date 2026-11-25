@@ -1,0 +1,19 @@
+{
+  "ruby_cdk_version": "0.0.1",
+  "schema_version": "resource specification 273.0.0, model sha256:72a25b4155afd84bfb1f287157d0ca45b2354799a22a2e03e09865975b13cab9, model format 1",
+  "stacks": [
+    {
+      "name": "lambda",
+      "template": "lambda.template.json",
+      "template_hash": "sha256:e8c52d2be0d1aa05e70ebac92d9103661730ac82cde3a47e9acd38fe0a4c9570",
+      "env": {
+        "account": "111122223333",
+        "region": "eu-central-1"
+      },
+      "dependencies": [],
+      "assets": [
+        "sha256:3479630be1c6bd65929a6623ef407d0b1af8364fd29e2e93801094d0f6db1207"
+      ]
+    }
+  ]
+}

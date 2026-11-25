@@ -1,0 +1,74 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "Role": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        ]
+      }
+    },
+    "Logs": {
+      "Type": "AWS::Logs::LogGroup",
+      "DeletionPolicy": "RetainExceptOnCreate",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/lambda-function-a58b8470",
+        "RetentionInDays": 7
+      }
+    },
+    "Function": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": [
+        "Logs"
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": "ruby-cdk-assets-111122223333-eu-central-1",
+          "S3Key": "3479630be1c6bd65929a6623ef407d0b1af8364fd29e2e93801094d0f6db1207.zip"
+        },
+        "FunctionName": "lambda-function-a58b8470",
+        "Handler": "app.handler",
+        "MemorySize": 128,
+        "Role": {
+          "Fn::GetAtt": [
+            "Role",
+            "Arn"
+          ]
+        },
+        "Runtime": "ruby3.4",
+        "Timeout": 10
+      }
+    }
+  },
+  "Outputs": {
+    "FunctionName": {
+      "Value": {
+        "Ref": "Function"
+      },
+      "Description": "The name of the function"
+    },
+    "FunctionArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Function",
+          "Arn"
+        ]
+      },
+      "Description": "The ARN of the function"
+    }
+  }
+}
