@@ -67,7 +67,7 @@ class AssetsPublishTemplateTest < Minitest::Test
   def test_an_owner_other_than_the_stack_env_account_is_refused_before_anything_is_checked
     store = AssetsFakeObjectStore.new.add_bucket(BUCKET)
 
-    error = assert_raises(ArgumentError) { RubyCdk::Assets.publish_template(stack, TEMPLATE, store:, owner: "999988887777") }
+    error = assert_raises(RubyCdk::PreconditionError) { RubyCdk::Assets.publish_template(stack, TEMPLATE, store:, owner: "999988887777") }
 
     assert_match(/env account/, error.message)
     assert_empty store.calls, "a caller that names the wrong account must not reach the store with it"
