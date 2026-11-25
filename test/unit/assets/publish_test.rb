@@ -84,7 +84,7 @@ class AssetsPublishTest < Minitest::Test
     store = AssetsFakeObjectStore.new.add_bucket(BUCKET)
     stack.asset.zip(directory("lambda", "index.rb" => "puts 1\n")).key.resolve(stack)
 
-    error = assert_raises(ArgumentError) { RubyCdk::Assets.publish(stack, store:, owner: "999988887777") }
+    error = assert_raises(RubyCdk::PreconditionError) { RubyCdk::Assets.publish(stack, store:, owner: "999988887777") }
 
     assert_match(/env account/, error.message)
     assert_empty store.calls, "a caller that names the wrong account must not reach the store with it"

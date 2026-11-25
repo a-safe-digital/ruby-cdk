@@ -46,7 +46,10 @@ module RubyCdk
 
       account = stack.env.account.to_s
       unless owner.to_s == account
-        raise ArgumentError, "publish was given owner #{owner.inspect}, but the bucket is named for the stack's " \
+        # A precondition, not a usage error: the command line explains this one
+        # to the user (the deploy stopped because the stack's env names another
+        # account than the credentials carry), instead of reporting a bug.
+        raise RubyCdk::PreconditionError, "publish was given owner #{owner.inspect}, but the bucket is named for the stack's " \
           "env account #{account.inspect}. Pass the resolved identity's account, and deploy a stack with an env " \
           "only with credentials of that account."
       end
@@ -79,7 +82,7 @@ module RubyCdk
 
       account = env.account.to_s
       unless owner.to_s == account
-        raise ArgumentError, "publish_template was given owner #{owner.inspect}, but the bucket is named for the stack's " \
+        raise RubyCdk::PreconditionError, "publish_template was given owner #{owner.inspect}, but the bucket is named for the stack's " \
           "env account #{account.inspect}. Pass the resolved identity's account, and deploy a stack with an env " \
           "only with credentials of that account."
       end
