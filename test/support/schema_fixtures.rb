@@ -42,10 +42,14 @@ module SchemaFixtures
   end
 
   # A zip in memory holding each [entry name, text] pair.
+  #
+  # The entry time is fixed: rubyzip defaults it to DOSTime.now, and the
+  # model's sha256 covers the zip's bytes, so two builds of the same sources
+  # more than two seconds apart would hash differently.
   def zip(*entries)
     Zip::OutputStream.write_buffer(StringIO.new(+"")) do |out|
       entries.each do |name, text|
-        out.put_next_entry(name)
+        out.put_next_entry(Zip::Entry.new(nil, name, time: Zip::DOSTime.new(2020, 1, 1)))
         out.write(text)
       end
     end.string
@@ -65,8 +69,17 @@ module SchemaFixtures
   end
 
   # The resource specification as AWS serves it.
+  #
+  # The gzip is built with a fixed mtime: Zlib.gzip writes the wall-clock
+  # time into the header, and the model's sha256 covers these bytes, so two
+  # builds of the same sources more than a second apart would hash differently.
   def specification_bytes(document = specification)
-    Zlib.gzip(JSON.generate(document))
+    io = StringIO.new(+"")
+    writer = Zlib::GzipWriter.new(io)
+    writer.mtime = 0
+    writer.write(JSON.generate(document))
+    writer.close
+    io.string
   end
 
   def download(url, body, status: 200, last_modified: LAST_MODIFIED, etag: "\"fixture\"")

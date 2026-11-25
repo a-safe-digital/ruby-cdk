@@ -188,7 +188,17 @@ class SynthPipelineTest < CoreHelpers::TestCase
     assert_equal written.template, kept.to_template, "a warning does not fail to_template"
   end
 
+  # The registered validators are the umbrella's own, and their membership is
+  # global state that other suites legitimately reshape (the CLI's strict-types
+  # tests run under a global shuffle beside this one). So this test pins the
+  # warning path with a set of its own: the unknown type warns, not errors,
+  # when warnings are asked for, and errors when they are not.
   def test_the_registered_validators_warn_and_an_unknown_type_reaches_the_template
+    RubyCdk::Synth.validators.each { |validator| RubyCdk::Synth.unregister_validator(validator) }
+    RubyCdk::Validation.validators(warnings: true, stateful_types: [])
+      .each { |validator| RubyCdk::Synth.register_validator(validator) }
+    @validators.replace(RubyCdk::Synth.validators.dup)
+
     stack = build_stack { resource("Widget", "AWS::Demo::Widget") }
 
     result = Synth.run(stack)
@@ -197,6 +207,21 @@ class SynthPipelineTest < CoreHelpers::TestCase
     assert_equal [ "V1" ], result.warnings.map(&:rule)
     assert_equal "AWS::Demo::Widget", result.template["Resources"]["Widget"]["Type"],
       "the keys of a type the model does not know are written verbatim"
+
+    # With strict_types the same finding is an error and not a warning — and it
+    # is reported once, not both ways: the strict set replaces the
+    # warnings-true set that is registered, exactly as the first half replaced
+    # the umbrella's. Teardown takes the strict set out; the registry guard in
+    # test_helper puts the umbrella's back over it.
+    strict = RubyCdk::Validation.validators(strict_types: true)
+    RubyCdk::Synth.validators.each { |validator| RubyCdk::Synth.unregister_validator(validator) }
+    strict.each { |validator| RubyCdk::Synth.register_validator(validator) }
+    @validators.replace(strict)
+
+    errored = Synth.run(stack)
+
+    assert_equal [ "V1" ], errored.issues.map(&:rule), "with strict_types the same finding is an error"
+    assert_empty errored.warnings
   end
 
   # --- validate: false, the --no-validate of the command line

@@ -57,7 +57,7 @@ class CliValidateTest < CliHelpers::TestCase
 
       RubyCdk::Synth.unregister_validator(validator)
     end
-    RubyCdk::Validation.validators(stateful_types: RubyCdk::Core::Stateful::RETAINED_TYPES + RubyCdk::Core::Stateful::SNAPSHOT_TYPES)
+    RubyCdk::Validation.validators(warnings: true, stateful_types: RubyCdk::Core::Stateful::RETAINED_TYPES + RubyCdk::Core::Stateful::SNAPSHOT_TYPES)
       .each { |validator| RubyCdk::Synth.register_validator(validator) }
   end
 

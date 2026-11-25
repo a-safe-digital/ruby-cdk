@@ -23,3 +23,45 @@ $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 
 require "minitest/autorun"
 require "ruby_cdk"
+
+# The synthesis pipeline is global state: its validators, normalizers and
+# manifest facts are registered at umbrella load and suites legitimately mutate
+# them — the command line's --strict-types test re-registers the validators
+# strict, the schema's tests take single rules out and put them back, the
+# pipeline's own tests add one-off normalizers. Under Minitest's global shuffle
+# whatever a suite leaves behind decides what every later suite sees.
+#
+# The registry guard makes the suite order-independent by construction: before
+# every test it snapshots the registries, after every test it restores exactly
+# what was there. It is the safety net under a suite's own setup and teardown,
+# not a replacement for them.
+#
+# Restoration reaches into the pipeline module's private registries rather than
+# going through register/unregister: the public calls can put the members back
+# but not their order, and the order of normalizers and validators is part of
+# what a test under shuffle must see unchanged.
+module RegistryGuard
+  def before_setup
+    @registry_snapshot = {
+      validators: RubyCdk::Synth.validators.dup,
+      normalizers: RubyCdk::Synth.normalizers.dup,
+      manifest_facts: RubyCdk::Synth.send(:manifest_facts).dup,
+      entry_facts: RubyCdk::Synth.send(:entry_facts).dup
+    }
+    super
+  end
+
+  def after_teardown
+    super
+    snapshot = @registry_snapshot
+    return unless snapshot
+
+    RubyCdk::Synth.send(:validators_registry).replace(snapshot[:validators].dup)
+    RubyCdk::Synth.send(:normalizers_registry).replace(snapshot[:normalizers].dup)
+    RubyCdk::Synth.send(:manifest_facts).replace(snapshot[:manifest_facts].dup)
+    RubyCdk::Synth.send(:entry_facts).replace(snapshot[:entry_facts].dup)
+    @registry_snapshot = nil
+  end
+end
+
+Minitest::Test.send(:include, RegistryGuard)
