@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../schema/validator"
 require_relative "failure"
 require_relative "pairs"
 
