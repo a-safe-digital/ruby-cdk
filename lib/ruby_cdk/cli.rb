@@ -6,6 +6,7 @@ require_relative "core"
 require_relative "synth"
 require_relative "assets"
 require_relative "deploy"
+require_relative "bootstrap"
 require_relative "cli/io"
 require_relative "cli/failure"
 require_relative "cli/shell"
@@ -18,6 +19,7 @@ require_relative "cli/synth"
 require_relative "cli/list"
 require_relative "cli/validate"
 require_relative "cli/operation"
+require_relative "cli/bootstrap"
 require_relative "cli/report"
 
 module RubyCdk
@@ -132,6 +134,13 @@ module RubyCdk
       desc: "Destroy only the stacks named, not the ones that depend on them"
     def destroy(*names)
       Cli::Operation.new(session, kind: :destroy).call(names)
+    end
+
+    desc "bootstrap", "Deploy the tool's asset bucket as the ruby-cdk-bootstrap stack"
+    method_option :deployer, type: :string,
+      desc: "ARN of the principal that reads the assets back out of the bucket. Nothing given: the account's own principals"
+    def bootstrap
+      Cli::Bootstrap.run(session)
     end
 
     no_commands do

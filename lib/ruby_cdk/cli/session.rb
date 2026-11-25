@@ -19,7 +19,7 @@ module RubyCdk
       # was given is true.
       Options = Data.define(:app, :out, :profile, :region, :account, :yes, :force, :quiet, :verbose, :json, :color,
         :long, :all, :exclusively, :execute, :on_failure, :parameters, :tags, :outputs_file,
-        :no_validate, :strict_types, :deployer_arn)
+        :no_validate, :strict_types, :deployer)
 
       # Thor's options as Options.
       def self.options_from(given)
@@ -98,7 +98,7 @@ module RubyCdk
 
           RubyCdk::Synth.unregister_validator(validator)
         end
-        RubyCdk::Validation.validators(strict_types: true, stateful_types: stateful_types)
+        RubyCdk::Validation.validators(strict_types: true, warnings: true, stateful_types: stateful_types)
           .each { |validator| RubyCdk::Synth.register_validator(validator) }
         @strict_registered = true
         io.debug("validators re-registered with strict_types: V1 makes an unknown type an error")
