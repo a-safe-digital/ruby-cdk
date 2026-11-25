@@ -9,7 +9,7 @@ gem "minitest", "~> 5.25"
 gem "rake"
 
 # Line coverage; the floor is enforced by `rake coverage:check`.
-gem "simplecov", "~> 0.22", group: :coverage, require: false
+gem "simplecov", "~> 1.3", group: :coverage, require: false
 
 # Style.
 gem "rubocop-rails-omakase", group: :style, require: false
