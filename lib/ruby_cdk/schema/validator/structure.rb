@@ -450,10 +450,18 @@ module RubyCdk
         end
 
         # The source's patterns are JavaScript's; a few use syntax Ruby has no reading of.
+        # Ruby warns on each compile about the `-` AWS leaves unescaped inside character
+        # classes — the pattern is theirs, so the warning is silenced here, once, and
+        # the rule's own reading of a pattern it cannot compile is `false`.
         def readable(pattern)
+          saved = $stderr
+          $stderr = File.open(File::NULL, "w")
           Regexp.new(pattern)
         rescue RegexpError, SyntaxError
           false
+        ensure
+          $stderr.close unless $stderr.equal?(saved)
+          $stderr = saved
         end
       end
     end

@@ -66,6 +66,7 @@ jobs:
       - name: Build the gem
         run: gem build ruby-cdk.gemspec
       - name: Draft the release with the gem attached
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

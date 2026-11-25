@@ -30,7 +30,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "thor", "~> 1.4"
   spec.add_dependency "rubyzip", "~> 3.0"
 
-  spec.files = Dir["lib/**/*.rb", "exe/*", "data/**/*", "sig/**/*.rbs"].sort
+  spec.files = Dir["lib/**/*.rb", "exe/*", "data/**/*"].sort
   spec.files += %w[CHANGELOG.md LICENSE README.md THIRD_PARTY_NOTICES.md].select { |name| File.exist?(File.expand_path(name, __dir__)) }
 
   spec.bindir = "exe"
