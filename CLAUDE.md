@@ -51,7 +51,10 @@ The table says in which wave each command starts to exist. Until then it is not 
 | `bundle exec rake parity` | The CDK's tests, ported, and the corpus sample; prints the scoreboard of `docs/07-testing.md` §11 | 1b |
 | `bundle exec rake corpus:update` | Fetches every template the CDK has synthesized, with git and nothing else. Network. Weekly in CI, never in the default gate | 2 |
 | `bundle exec rake spec:update` | Downloads AWS's schema sources and rebuilds the vendored model. Network. Weekly in CI, by hand only on purpose | 2 |
-| `bundle exec rake nag` | Security rules over every example template | 6 |
+| `bundle exec rake nag` | Security rules over every example template (synthesizes the examples into cdk.out when it has no templates). In the default gate and CI from Wave 6 | 6 |
+| `bundle exec rake sweep` | Deletes integration stacks older than six hours, under WF-5's three variables. Never deletes a physical resource by hand | 3 |
+| `bundle exec rake mutation` | Every mutation in `test/mutations/` leaves its test file red | 3 |
+| `bundle exec rake rbi:update` | Regenerates the Sorbet RBIs for the runtime gems and their dependencies | 0 |
 | `bundle exec rake integration` | Real CloudFormation in the sandbox. Never run without the owner's approval for the wave, and never without the three variables of WF-5 | 1 |
 
 ## Commits
