@@ -26,6 +26,14 @@ module RubyCdk
       when RubyCdk::Error
         approval(error, io, command)
         Deploy.exit_code_for(error)
+      when ->(error) { credential_failure?(error) }
+        # An AWS credential or SSO failure (InvalidSSOToken, an expired token, a
+        # profile that cannot refresh): a precondition of the run, not a bug.
+        # The SDK's message is printed first; the command to run next is ours.
+        io.failure("ruby-cdk: #{text(error)}")
+        io.say("The AWS session or the credentials are not usable. Run `aws sso login --profile PROFILE` " \
+          "(or refresh the credentials another way), then run the command again.")
+        USAGE
       when Thor::Error
         # Thor's own usage errors: an unknown command, an unknown option, an
         # option without its value. The commands named there, when there is
@@ -64,6 +72,18 @@ module RubyCdk
     # bytes in its message that are not UTF-8.
     def self.text(error)
       error.message.to_s.encode("UTF-8", invalid: :replace, undef: :replace)
+    end
+
+    # True for the AWS errors that mean "the session or the credentials cannot
+    # be used": an SSO token that expired and failed to refresh, a token that
+    # cannot be retrieved at all, credentials that could not be found, the
+    # metadata endpoint probed in vain. Matched on the class name (which names
+    # the failure: InvalidSSOToken, SSOError...) and on the message, so nothing
+    # Aws:: is loaded to ask.
+    CREDENTIAL_FAILURE = /SSO|Token|InvalidClientTokenId|unable to sign request|ExpiredToken|Failed to open TCP connection to 169\.254|Loading credentials/.freeze
+
+    def self.credential_failure?(error)
+      error.class.name.start_with?("Aws::") && CREDENTIAL_FAILURE.match?("#{error.class.name} #{text(error)}")
     end
 
     # An approval that was not given (exit 4). When nobody could have given it,
