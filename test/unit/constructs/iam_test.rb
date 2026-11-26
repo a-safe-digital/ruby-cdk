@@ -132,6 +132,17 @@ class ConstructsIamTest < CoreHelpers::TestCase
     template.has_resource_properties("AWS::IAM::Policy", { "PolicyName" => "Role2DefaultPolicy", "Roles" => [ { "Ref" => "Role2Resource" } ] })
   end
 
+  def test_a_non_string_description_is_refused_as_a_usage_error_not_a_crash
+    error = assert_raises(RubyCdk::UsageError) do
+      build_stack do
+        RubyCdk::IAM::Role.new(self, "Role", assumed_by: "lambda.amazonaws.com", description: 123)
+      end
+    end
+
+    assert_includes error.message, "the description must be at most"
+    assert_includes error.message, "123", "the offending value is shown as the sibling validators show theirs"
+  end
+
   def test_a_hash_statement_is_taken_verbatim
     built, = build_stack do
       role = RubyCdk::IAM::Role.new(self, "Role", assumed_by: "lambda.amazonaws.com")

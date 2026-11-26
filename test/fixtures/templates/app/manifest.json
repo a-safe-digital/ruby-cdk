@@ -5,7 +5,7 @@
     {
       "name": "app",
       "template": "app.template.json",
-      "template_hash": "sha256:35a52c5cf38ed7ecdfe352f65e88ececce36f2af9d58f24dc1598818778167d1",
+      "template_hash": "sha256:1dccf8131f9964dd5c077b621b6fba312369e0839d2b74abaf94b8fd27128b8a",
       "env": {
         "account": "111122223333",
         "region": "eu-central-1"

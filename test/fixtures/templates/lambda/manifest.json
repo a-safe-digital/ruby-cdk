@@ -5,7 +5,7 @@
     {
       "name": "lambda",
       "template": "lambda.template.json",
-      "template_hash": "sha256:e8c52d2be0d1aa05e70ebac92d9103661730ac82cde3a47e9acd38fe0a4c9570",
+      "template_hash": "sha256:da5955a637bbc0814b4f5e70195b611b2b1b96f5c7ec6954d530fd7cd667810c",
       "env": {
         "account": "111122223333",
         "region": "eu-central-1"

@@ -55,7 +55,7 @@ For a deploy that does not stop to ask, add `--yes`.
 - one `RubyCdk::S3::Bucket` with versioning on, public access blocked on all
   four settings and SSE-S3 encryption written out — again the defaults;
 - one `RubyCdk::Lambda::Function` whose code is the asset, running
-  `ruby3.4`, with the log group `/aws/lambda/<function name>` the function
+  `ruby4.0`, with the log group `/aws/lambda/<function name>` the function
   construct makes (kept 731 days), and the role passed in above;
 - the two grants, and outputs for the function's name and ARN and the
   table's and bucket's names.
@@ -64,7 +64,7 @@ The names come from `stack.unique_name`: stable across deploys, made of the
 stack's env, so the log group always agrees with the function.
 
 **The runtime.** The vendored resource specification puts no enum on
-`Runtime`, so the identifier is not checked at synthesis. `ruby3.4` is the
+`Runtime`, so the identifier is not checked at synthesis. `ruby4.0` is the
 runtime the constructs pin (dated in
 `lib/ruby_cdk/constructs/function.rb`); when AWS retires it, pass
 `runtime:` with the current identifier.

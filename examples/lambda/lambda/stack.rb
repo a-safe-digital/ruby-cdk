@@ -42,7 +42,7 @@ module Lambda
         "Handler" => "app.handler",
         "MemorySize" => 128,
         "Role" => Fn.get_att(role, "Arn"),
-        "Runtime" => "ruby3.4",
+        "Runtime" => "ruby4.0",
         "Timeout" => 10
       })
 

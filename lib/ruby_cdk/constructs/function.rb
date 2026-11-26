@@ -17,9 +17,10 @@ module RubyCdk
     #     code: code, handler: "app.handler")
     #
     # The runtime is a String, never an enum: the vendored model publishes no
-    # Runtime list, and the identifier ages. The default was "ruby3.4" when
-    # this file was written, on 2026-11-25, one of the runtimes AWS then
-    # supported; when AWS retires it, pass runtime: with the current one. The
+    # Runtime list, and the identifier ages. The default is "ruby4.0", set on
+    # 2026-11-26 from AWS's supported-runtimes page (deprecation 2029-03-31;
+    # the previous default, ruby3.4, is deprecated a year earlier); when AWS
+    # retires it, pass runtime: with the current one. The
     # function's role is the CDK's ServiceRole default (function.ts:1038):
     # trusted by lambda.amazonaws.com, carrying the
     # AWSLambdaBasicExecutionRole managed policy that gives the function its
@@ -46,9 +47,9 @@ module RubyCdk
     # resource policy; this tool grants to identities only, so the statement
     # lands on the caller's role - the same permission, from the other side.
     class Function < Construct
-      # The runtime identifier the examples pin. Dated: 2026-11-25, when AWS
-      # still supported ruby3.4. No enum, by design - pass runtime: to move.
-      DEFAULT_RUNTIME = "ruby3.4"
+      # The runtime identifier the examples pin. Dated: 2026-11-26, from AWS's
+      # supported-runtimes page. No enum, by design - pass runtime: to move.
+      DEFAULT_RUNTIME = "ruby4.0"
 
       # The managed policy the CDK's default ServiceRole carries
       # (function.ts:1040, AWSLambdaBasicExecutionRole).

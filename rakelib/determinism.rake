@@ -21,7 +21,11 @@ module Tools
     SEEDS = %w[1 42424].freeze
 
     # The examples with committed fixtures, as the snapshot harness keeps them.
-    EXAMPLES = { "hello" => "examples/hello/cdk.rb", "lambda" => "examples/lambda/cdk.rb" }.freeze
+    EXAMPLES = {
+      "hello" => "examples/hello/cdk.rb",
+      "lambda" => "examples/lambda/cdk.rb",
+      "app" => "examples/app/cdk.rb"
+    }.freeze
     ROOT = File.expand_path("..", __dir__)
 
     module_function

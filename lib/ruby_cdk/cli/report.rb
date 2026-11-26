@@ -75,15 +75,26 @@ module RubyCdk
     end
 
     # True for the AWS errors that mean "the session or the credentials cannot
-    # be used": an SSO token that expired and failed to refresh, a token that
-    # cannot be retrieved at all, credentials that could not be found, the
-    # metadata endpoint probed in vain. Matched on the class name (which names
-    # the failure: InvalidSSOToken, SSOError...) and on the message, so nothing
-    # Aws:: is loaded to ask.
-    CREDENTIAL_FAILURE = /SSO|Token|InvalidClientTokenId|unable to sign request|ExpiredToken|Failed to open TCP connection to 169\.254|Loading credentials/.freeze
+    # be used". Matched on the error class's name — the SDK raises a distinct
+    # class for each of these failures (InvalidSSOToken, InvalidSSOCredentials,
+    # MissingCredentialsError, the services' ExpiredToken and
+    # InvalidClientTokenId...) — and on the two message shapes that have no
+    # class of their own: the signature failure and the instance metadata
+    # endpoint probed in vain. Nothing Aws:: is loaded to ask. An unrelated AWS
+    # error whose message happens to contain "Token" or "SSO" — a
+    # CloudFormation or IAM validation message, say — is not classified here.
+    CREDENTIAL_CLASS = /
+      InvalidSSOToken|InvalidSSOCredentials|SSOError|InvalidLoginToken|
+      TokenRefreshRequired|ExpiredToken|InvalidClientTokenId|
+      MissingCredentialsError|MissingBearerTokenError|MissingWebIdentityTokenFile|
+      NoSourceCredentialsError|InvalidCredentialSourceError|CredentialSourceConflictError
+    /x.freeze
+    CREDENTIAL_MESSAGE = /unable to sign request|Failed to open TCP connection to 169\.254/.freeze
 
     def self.credential_failure?(error)
-      error.class.name.start_with?("Aws::") && CREDENTIAL_FAILURE.match?("#{error.class.name} #{text(error)}")
+      return false unless error.class.name.start_with?("Aws::")
+
+      CREDENTIAL_CLASS.match?(error.class.name) || CREDENTIAL_MESSAGE.match?(text(error))
     end
 
     # An approval that was not given (exit 4). When nobody could have given it,

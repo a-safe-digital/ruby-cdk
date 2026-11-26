@@ -26,6 +26,13 @@ module RubyCdk
     # All on the queue's ARN, to the principal's own policy - the CDK's
     # QueuePolicy exists for principals that cannot carry a statement, which is
     # not a case here.
+    #
+    # Encryption: this tool takes no option and writes no property, exactly as
+    # the CDK at the pinned commit does when props.encryption is unset
+    # (_determineEncryptionProps, queue.ts:459-468 writes {}): AWS encrypts a
+    # new queue at rest with an SQS-managed key by default, so the template
+    # says nothing. A customer-managed key needs KmsMasterKeyId, which this
+    # tool does not yet take; architecture section 21 records the row.
     class Queue < Construct
       # The CDK's consume actions, in its order (queue-base.ts, its grant test).
       CONSUME_ACTIONS = [

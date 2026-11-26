@@ -20,6 +20,14 @@ module RubyCdk
     # The grants are the CDK's (aws-sns/lib/topic-base.ts and its tests, at the
     # pinned commit): publish is sns:Publish on the topic's ARN; subscribe is
     # sns:Subscribe, the API call alone, as the CDK grants it.
+    #
+    # Encryption: this tool takes no option and writes no property, as the CDK
+    # at the pinned commit does (topic.ts writes KmsMasterKeyId only when a key
+    # prop is given; there is no managed-SSE property on the resource): AWS
+    # encrypts a new topic at rest with an SNS-managed key by default, so the
+    # template says nothing. A customer-managed key needs KmsMasterKeyId,
+    # which this tool does not yet take; architecture section 21 records the
+    # row.
     class Topic < Construct
       # The CDK's publish action (topic-base.ts:250).
       PUBLISH_ACTION = "sns:Publish"

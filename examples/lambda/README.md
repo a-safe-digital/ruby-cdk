@@ -56,7 +56,7 @@ The function's name comes from `stack.unique_name("function")`: stable across
 deploys, made of the stack's env, so the log group's name agrees with it.
 
 **The runtime.** The vendored resource specification puts no enum on
-`Runtime`, so the identifier is not checked at synthesis. `ruby3.4` is a
+`Runtime`, so the identifier is not checked at synthesis. `ruby4.0` is a
 runtime AWS currently supports; when AWS retires it, change the string here
 and the validator keeps the rest of the template honest.
 

@@ -93,7 +93,7 @@
           "S3Key": "1fb51abebc5bebde626ccb139ee0402ca7ee14acad814f65f531e6e06fe5109c.zip"
         },
         "Handler": "app.handler",
-        "Runtime": "ruby3.4",
+        "Runtime": "ruby4.0",
         "Role": {
           "Fn::GetAtt": [
             "RoleResource",

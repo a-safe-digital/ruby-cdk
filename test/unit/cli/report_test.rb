@@ -64,4 +64,39 @@ class CliReportTest < Minitest::Test
     assert_includes text(io), "Report it as a bug"
     refute_includes text(io), "aws sso login"
   end
+
+  # A message that merely mentions "Token" or "SSO" — a CloudFormation or IAM
+  # validation message, say — is not a credential precondition: the error keeps
+  # its own reporting.
+  def test_an_aws_failure_whose_message_mentions_a_token_is_not_a_credential_precondition
+    error = aws_error("Aws::CloudFormation::Errors::ValidationError", "Template error: the SSO token property is invalid")
+
+    code = RubyCdk::Cli.report(error, io:, command: "deploy")
+
+    assert_equal 1, code
+    refute_includes text(io), "aws sso login"
+    assert_includes text(io), "Report it as a bug"
+  end
+
+  def test_the_credential_matcher_answers_true_only_for_the_named_classes
+    assert RubyCdk::Cli.credential_failure?(
+      aws_error("Aws::Errors::InvalidSSOToken", "Token is invalid and failed to refresh")
+    ), "the SSO token class is the precondition"
+    assert RubyCdk::Cli.credential_failure?(
+      aws_error("Aws::STS::Errors::ExpiredToken", "Security token on the page is no longer valid")
+    ), "the service's ExpiredToken class is the precondition"
+    assert RubyCdk::Cli.credential_failure?(
+      aws_error("Aws::Sigv4::Errors::MissingCredentialsError", "no credentials to sign with")
+    ), "the signature failure has its own class"
+    assert RubyCdk::Cli.credential_failure?(
+      aws_error("Aws::Errors::MetadataParserError", "Failed to open TCP connection to 169.254.169.254")
+    ), "the unreachable metadata endpoint has no class of its own"
+
+    refute RubyCdk::Cli.credential_failure?(
+      aws_error("Aws::CloudFormation::Errors::ValidationError", "Template error: SSO is not allowed here")
+    ), "a message that mentions SSO is not the precondition"
+    refute RubyCdk::Cli.credential_failure?(
+      aws_error("StandardError", "Failed to open TCP connection to 169.254.169.254")
+    ), "the message shape alone, outside Aws::, is not the precondition"
+  end
 end

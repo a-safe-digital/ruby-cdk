@@ -192,7 +192,7 @@ module RubyCdk
         return nil if description.nil? || (description.is_a?(String) && description.empty?)
         return description if description.is_a?(String) && description.length <= MAX_DESCRIPTION_LENGTH
 
-        raise UsageError, "#{path}: the description must be at most #{MAX_DESCRIPTION_LENGTH} characters, got #{description.length}"
+        raise UsageError, "#{path}: the description must be at most #{MAX_DESCRIPTION_LENGTH} characters, got #{description.inspect}"
       end
 
       def valid_session_duration(duration)

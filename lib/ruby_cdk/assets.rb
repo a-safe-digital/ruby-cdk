@@ -65,7 +65,11 @@ module RubyCdk
     # uploader leaves a key that is already there alone — the second deploy of
     # the same template puts nothing. Answers the address of the object,
     # https://<bucket>.s3.<region>.amazonaws.com/<key>, the one the change set
-    # carries as TemplateURL.
+    # carries as TemplateURL. That address is the commercial partition's shape,
+    # written from the bucket's name and region, not read from the SDK: under
+    # another partition, or with the endpoint overridden (the emulator
+    # scenario), CloudFormation would not resolve it — the assumption is
+    # recorded in architecture section 8.
     #
     # The bucket is the stack's own, named for its env as an asset bucket is,
     # and owner must be the stack's env account, as publish requires. The

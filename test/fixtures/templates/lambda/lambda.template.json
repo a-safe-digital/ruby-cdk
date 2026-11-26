@@ -49,7 +49,7 @@
             "Arn"
           ]
         },
-        "Runtime": "ruby3.4",
+        "Runtime": "ruby4.0",
         "Timeout": 10
       }
     }
