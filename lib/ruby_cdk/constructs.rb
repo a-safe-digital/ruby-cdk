@@ -7,7 +7,8 @@
 #
 #   RubyCdk::S3::Bucket, RubyCdk::IAM::Role, RubyCdk::Lambda::Function,
 #   RubyCdk::DynamoDB::Table, RubyCdk::SQS::Queue, RubyCdk::SNS::Topic,
-#   RubyCdk::Logs::LogGroup
+#   RubyCdk::Logs::LogGroup, RubyCdk::SSM::Parameter,
+#   RubyCdk::SecretsManager::Secret, RubyCdk::Events::Rule
 #
 # The sources behind the defaults were read in aws/aws-cdk at commit
 # c070afb54b9e4dbddd52a85a21077fe970354985 (main, read on 2026-11-25,
@@ -54,3 +55,7 @@ require_relative "constructs/function"
 require_relative "constructs/table"
 require_relative "constructs/queue"
 require_relative "constructs/topic"
+require_relative "constructs/ssm_parameter"
+require_relative "constructs/secret"
+require_relative "constructs/schedule"
+require_relative "constructs/events_rule"
