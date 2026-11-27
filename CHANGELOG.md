@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-27
+
 ### Added
 
 - **Synthesis.** `RubyCdk::App`/`Stack`/`Construct`: Ruby objects synthesize
@@ -43,15 +45,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The test kit.** `RubyCdk::Test`, the equivalent of the CDK's assertions:
   the ten matchers, `Capture`, and `Template` with its queries, so
   infrastructure tests read like CDK tests.
+- **Curated constructs.** `S3::Bucket`, `IAM::Role`, `Lambda::Function`,
+  `DynamoDB::Table`, `SQS::Queue`, `SNS::Topic`, `Logs::LogGroup`, with the
+  Grant shape and `PolicyStatement`: the CDK's action sets, granted to
+  identities only, with an app example that deploys for real.
+- **The diff.** `ruby-cdk diff`: the deployed template against the synthesized
+  one, normalized copies compared deep-equal, replacements priced from the
+  vendored model, replacement propagated through `Ref`/`Fn::` references, and
+  a security view that walks every policy-document property in every
+  resource. It writes nothing to the account.
 - **The command line.** `synth`, `ls`, `deploy`, `destroy`, `validate`,
   `bootstrap`, `version` — with the CDK's stack-selection rules, approval
   questions that refuse when no terminal can answer, an exit code per
-  failure class, `--json`, and an examples directory (`hello`, `lambda`).
-- **CI.** Every gate check as its own parallel job; determinism; the parity
-  scoreboard against 675 cases of the CDK's own tests (343 ported, all
-  passing, the rest listed with their reason); a deploy-and-destroy run
-  against the AWS Emulator in a container; weekly refreshes of the CDK
-  corpus and the AWS schema sources, opening pull requests when they move.
+  failure class, `--json`, `--help` on every command, and an examples
+  directory (`hello`, `lambda`, `app`).
+- **CI.** Every gate check as its own parallel job; determinism (every
+  example, cross-seed); the parity scoreboard against 1,551 cases of the
+  CDK's own tests (445 ported, all passing, the rest listed with their
+  reason); a deploy-and-destroy run against the AWS Emulator in a container;
+  weekly refreshes of the CDK corpus and the AWS schema sources, opening
+  pull requests when they move.
 
 ### Changed
 

@@ -1,5 +1,5 @@
 {
-  "ruby_cdk_version": "0.0.1",
+  "ruby_cdk_version": "0.1.0",
   "schema_version": "resource specification 273.0.0, model sha256:72a25b4155afd84bfb1f287157d0ca45b2354799a22a2e03e09865975b13cab9, model format 1",
   "stacks": [
     {
