@@ -2,7 +2,7 @@
 
 Infrastructure as code in **pure Ruby**, in the style of the AWS CDK: define stacks as Ruby objects, synthesize deterministic CloudFormation templates validated against the schemas AWS publishes, and deploy them through change sets with the AWS SDK for Ruby. No Node.js, no jsii, no npm anywhere in the toolchain.
 
-> **Status: 0.1.0, pre-release.** The gem ships with each [release](https://github.com/a-safe-digital/ruby-cdk/releases); rubygems.org publishing is still pending. The API is still settling; see [Status](#status).
+> **Status: 0.1.0, pre-release.** The gem is on [rubygems.org](https://rubygems.org/gems/ruby-cdk) and attached to each [release](https://github.com/a-safe-digital/ruby-cdk/releases). The API is still settling; see [Status](#status).
 
 ## What it is
 
@@ -12,7 +12,11 @@ The AWS CDK's programming model, reimplemented in Ruby. Your app file creates on
 
 ## Install
 
-From source, or the gem attached to each [release](https://github.com/a-safe-digital/ruby-cdk/releases). There is no gem on rubygems.org yet.
+From rubygems.org, or from source:
+
+```sh
+gem install ruby-cdk
+```
 
 ```sh
 git clone https://github.com/a-safe-digital/ruby-cdk.git
@@ -33,8 +37,7 @@ With the gem installed (above), `ruby-cdk new` scaffolds the smallest useful app
 ```sh
 ruby-cdk new my-app
 cd my-app
-bundle install --local    # ruby-cdk is not on rubygems.org yet: this resolves the
-                          # Gemfile from the gem installed on this machine, nothing more
+bundle install            # ruby-cdk is on rubygems.org; this resolves the Gemfile
 ```
 
 The directory holds the app file, `cdk.rb` — one `RubyCdk::App`, one stack:
@@ -282,7 +285,7 @@ Works today:
 
 Next: the remaining constructs of the wave cards (SSM parameters, a Secrets Manager helper, EventBridge rules, API Gateway REST APIs), context providers (lookups of existing resources), and hotswap.
 
-And the honest part: this is 0.1.0. The APIs — `Stack`, `App`, `Test`, the constructs, the CLI options — may still change between versions, the `--strict-types` defect above is real, and nothing is published to rubygems.org yet. Pin the release or commit you build from.
+And the honest part: this is 0.1.0. The APIs — `Stack`, `App`, `Test`, the constructs, the CLI options — may still change between versions, and the `--strict-types` defect above is real. Pin the version you build against.
 
 ## Development
 

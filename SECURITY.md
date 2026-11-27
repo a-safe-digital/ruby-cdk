@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-ruby-cdk is 0.1.0, pre-release. Nothing is published to rubygems.org; install from source and pin the commit you build from. Only the latest commit on `main` receives security fixes.
+ruby-cdk is 0.1.0, pre-release. Install the released [gem](https://rubygems.org/gems/ruby-cdk) or pin the commit you build from. Only the latest commit on `main` receives security fixes.
 
 ## Reporting a vulnerability
 

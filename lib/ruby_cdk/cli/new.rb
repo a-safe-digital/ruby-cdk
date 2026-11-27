@@ -58,8 +58,8 @@ module RubyCdk
         # (initializeProject, init.ts:729-733), and what it cannot run itself
         # as a "Please run" line (postInstallTypescript's no-network path).
         session.io.say(File.read(File.join(target, "README.md")))
-        session.io.say("Please run `bundle install --local` in #{parts.name}: ruby-cdk is not on rubygems.org yet, " \
-          "so the Gemfile resolves from the gem installed on this machine.")
+        session.io.say("Please run `bundle install` in #{parts.name}: ruby-cdk is on rubygems.org, " \
+          "so the Gemfile resolves like any other gem.")
         session.io.say("All done! #{parts.name}/README.md has the three commands: synth, deploy, destroy.")
         Cli::SUCCESS
       end
@@ -224,21 +224,18 @@ module RubyCdk
         RUBY
       end
 
-      # The version, not a path: the README's install story is "build and
-      # install the gem from source", so the gem is on this machine like any
-      # installed gem, and a path would hard-wire a checkout that does not
-      # exist anywhere else. `bundle install --local` resolves it today;
-      # `bundle install` resolves the same line once a release is published.
+      # The version, not a path: the gem is published, so `bundle install`
+      # resolves the line from rubygems.org like any other gem, and a path
+      # would hard-wire a checkout that does not exist anywhere else.
       def self.gemfile
         <<~RUBY
           # frozen_string_literal: true
 
           source "https://rubygems.org"
 
-          # ruby-cdk is not on rubygems.org yet: install it from source (the
-          # ruby-cdk README's Install) and run `bundle install --local` in this
-          # directory to resolve the line below from the installed gem. Once a
-          # release is published, plain `bundle install` resolves it too.
+          # ruby-cdk is on rubygems.org: plain `bundle install` resolves this
+          # line. `bundle install --local` resolves it from the gem installed
+          # on this machine instead, without the network.
           gem "ruby-cdk", "~> #{RubyCdk::VERSION}"
         RUBY
       end
@@ -255,7 +252,7 @@ module RubyCdk
           ## The three commands
 
           ```sh
-          bundle install --local         # once, in this directory: see "The Gemfile"
+          bundle install                 # once, in this directory: see "The Gemfile"
           bundle exec ruby-cdk synth     # writes cdk.out/#{parts.stack_id}.template.json and prints the template
           bundle exec ruby-cdk deploy    # shows the change set, asks, then deploys it
           bundle exec ruby-cdk destroy   # prints what is kept, asks for the stack name, then deletes
@@ -295,10 +292,10 @@ module RubyCdk
 
           ## The Gemfile
 
-          ruby-cdk is not on rubygems.org yet: install it from source (the
-          ruby-cdk README's Install), then run `bundle install --local` here, which
-          resolves `gem "ruby-cdk"` from the gem installed on this machine. Once a
-          release is published, plain `bundle install` resolves the same line.
+          ruby-cdk is on rubygems.org: plain `bundle install` here resolves
+          `gem "ruby-cdk"` like any other gem. `bundle install --local`
+          resolves the same line from the gem installed on this machine,
+          without the network.
 
           ## Files
 

@@ -56,7 +56,7 @@ class CliNewTest < CliHelpers::TestCase
       Dir.children(project_dir).sort
     assert_equal [ "my_app_stack.rb" ], Dir.children(File.join(project_dir, "my_app"))
     assert_includes result.err.string, "Applying project template app for ruby into my-app/"
-    assert_includes result.err.string, "bundle install --local"
+    assert_includes result.err.string, "bundle install"
     assert_includes result.err.string, "All done!"
     assert_includes result.err.string, "# my-app", "the generated README is printed, as the CDK prints it"
   end
@@ -92,7 +92,7 @@ class CliNewTest < CliHelpers::TestCase
     gemfile = File.read(File.join(project_dir, "Gemfile"))
     assert_includes gemfile, 'source "https://rubygems.org"'
     assert_includes gemfile, "gem \"ruby-cdk\", \"~> #{RubyCdk::VERSION}\"",
-      "the version the scaffold runs with, resolved from the installed gem until a release exists"
+      "the version the scaffold runs with, resolved from rubygems.org"
   end
 
   # --- everything generated synthesizes, byte for byte
