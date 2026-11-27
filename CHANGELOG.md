@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Four more curated constructs.** `SSM::Parameter` (String and StringList,
+  the CDK's grants, SecureString refused with the KMS reason), a
+  `SecretsManager::Secret` reference by name (partial ARN as one `Fn::Sub`,
+  the `{{resolve:secretsmanager:...}}` value), `Events::Rule` with
+  `Schedule` and pattern merging, and `ApiGateway::RestApi` with a Lambda
+  proxy (`{proxy+}`, ANY, a prod stage, the CDK's method-set hash on the
+  Deployment). Parity now 1,755 cases, 485 ported.
+
 ## [0.1.0] - 2026-11-27
 
 ### Added

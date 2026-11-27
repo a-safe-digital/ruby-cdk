@@ -8,7 +8,7 @@ Infrastructure as code in **pure Ruby**, in the style of the AWS CDK: define sta
 
 The AWS CDK's programming model, reimplemented in Ruby. Your app file creates one `RubyCdk::App`; stacks are classes with a `build` method that declares resources, parameters and outputs; synthesis turns the object tree into CloudFormation templates whose every byte is specified, and the `ruby-cdk` CLI deploys them through change sets. Properties are written with CloudFormation's names, or in `snake_case` — the keys are normalized against AWS's own resource schemas before anything is written.
 
-"Measured against the CDK" is a number, not a claim. The CDK's own test suites are ported and run in the default gate (`rake parity`): 1,551 cases, 445 of them ported, every ported case passing, and each of the others listed in a ported file's header with the reason it is not ported. The whole suite — 1,949 runs, 24,194 assertions — passes with no AWS credential reachable; the same gate keeps line coverage above 98% over a floor of 85%, and proves that every example synthesizes byte-identical output across two runs with different Ruby hash seeds.
+"Measured against the CDK" is a number, not a claim. The CDK's own test suites are ported and run in the default gate (`rake parity`): 1,755 cases, 485 of them ported, every ported case passing, and each of the others listed in a ported file's header with the reason it is not ported. The whole suite — 2,021 runs, 24,361 assertions — passes with no AWS credential reachable; the same gate keeps line coverage above 98% over a floor of 85%, and proves that every example synthesizes byte-identical output across two runs with different Ruby hash seeds.
 
 ## Install
 
@@ -182,7 +182,7 @@ A key that matches nothing is an error with the closest names as suggestions —
 
 Exit 0 when every selected stack is clean of errors, 2 otherwise; warnings are reported but not fatal. An unknown resource type (V1) is a warning that leaves the resource's keys as written, so `Custom::*` and registry types work.
 
-`--strict-types` re-registers the rules so that V1 reports an error instead of a warning. It does not work in this release: `ruby-cdk validate --strict-types` fails before synthesis with `NameError: uninitialized constant RubyCdk::Validation`. It is listed here because the option exists; use it only to see the failure, not to gate anything.
+`--strict-types` re-registers the rules so that V1 reports an error instead of a warning. The run keeps `validate`'s contract: exit 0 when nothing is found, exit 2 with the first error printed.
 
 ## Assets
 
@@ -213,16 +213,16 @@ The bucket comes from `ruby-cdk bootstrap`, which deploys a stack named `ruby-cd
 `RubyCdk::Test` is the CDK's assertions module, ported: the same method names, snake_cased. A stack's template in a plain Minitest:
 
 ```ruby
-# test/hello_stack_test.rb
+# test/my_app_stack_test.rb — beside the scaffold's files
 require "minitest/autorun"
 require "ruby-cdk"
 require "ruby_cdk/test"
 
-require_relative "../hello/stack"
+require_relative "my_app/my_app_stack"
 
-class HelloStackTest < Minitest::Test
+class MyAppStackTest < Minitest::Test
   def test_the_bucket_stays_private_and_is_encrypted
-    stack = Hello::Stack.new(RubyCdk::App.new, "hello")
+    stack = MyApp::Stack.new(RubyCdk::App.new, "my-app")
     template = RubyCdk::Test.template(stack)
 
     template.resource_count_is("AWS::S3::Bucket", 1)
@@ -243,7 +243,6 @@ class HelloStackTest < Minitest::Test
       "DeletionPolicy" => "RetainExceptOnCreate",
       "UpdateReplacePolicy" => "Retain")
     template.has_parameter("Versioning", "Type" => "String", "Default" => "Suspended")
-    template.has_output("BucketName", "Value" => RubyCdk::Test.any_value)
     template.template_matches("Parameters" => RubyCdk::Test.any_value)
     assert_equal "RetainExceptOnCreate",
       template.get("Resources.Bucket.DeletionPolicy").as_string
@@ -281,11 +280,11 @@ Works today:
 - The nag rule pack — seventeen security rules over every template of `cdk.out`, run with `rake nag`, suppressed per resource or in `.ruby-cdk/nag.yml`.
 - The test kit, `RubyCdk::Test`, with the CDK's assertions ported.
 - Deploy and destroy run end to end in CI against an emulator that speaks CloudFormation's real API (`rake integration`).
-- Curated constructs — `S3::Bucket`, `IAM::Role`, `Lambda::Function`, `DynamoDB::Table`, `SQS::Queue`, `SNS::Topic`, `Logs::LogGroup` — with explicit grants, and `ruby-cdk diff` against the deployed template.
+- Curated constructs — `S3::Bucket`, `IAM::Role`, `Lambda::Function`, `DynamoDB::Table`, `SQS::Queue`, `SNS::Topic`, `Logs::LogGroup`, `SSM::Parameter`, a `SecretsManager::Secret` reference, `Events::Rule`, `ApiGateway::RestApi` — with explicit grants, and `ruby-cdk diff` against the deployed template.
 
-Next: the remaining constructs of the wave cards (SSM parameters, a Secrets Manager helper, EventBridge rules, API Gateway REST APIs), context providers (lookups of existing resources), and hotswap.
+Next: context providers (lookups of existing resources) and hotswap.
 
-And the honest part: this is 0.1.0. The APIs — `Stack`, `App`, `Test`, the constructs, the CLI options — may still change between versions, and the `--strict-types` defect above is real. Pin the version you build against.
+And the honest part: this is 0.1.0. The APIs — `Stack`, `App`, `Test`, the constructs, the CLI options — may still change between versions. Pin the version you build against.
 
 ## Development
 
@@ -296,7 +295,7 @@ bundle install
 bundle exec rake        # everything that must pass before a commit
 ```
 
-The default gate is an explicit list: `test`, `rubocop`, `typecheck` (Sorbet), `coverage:check` (floor 85%), `determinism`, `purity`, `parity`. It never touches the network and never calls AWS. `rake -T` lists the rest — `rake nag`, `rake mutation`, and the network tasks `spec:update` and `corpus:update`, which CI runs weekly and everyone else runs by hand, on purpose.
+The default gate is an explicit list: `test`, `rubocop`, `typecheck` (Sorbet), `coverage:check` (floor 85%), `determinism`, `parity`, `nag`, `purity`. It never touches the network and never calls AWS. `rake -T` lists the rest — `rake mutation`, and the network tasks `spec:update` and `corpus:update`, which CI runs weekly and everyone else runs by hand, on purpose.
 
 The tests: `test/unit/` for each component alone, `test/cdk/` for the CDK's suites ported (every file's header names the origin path, commit and licence), `test/architecture/` for the component map — the set of components and their dependencies, enforced by a test so no shortcut crosses a boundary — and `test/integration/`, of which only the in-process part runs in the gate. The design documents under `docs/` are not part of a fresh clone: the owner keeps them local (decision D-025), so the code comments and this README are the public record.
 

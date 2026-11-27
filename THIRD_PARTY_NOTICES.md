@@ -18,7 +18,7 @@ Copyright 2018-2026 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 Repository: <https://github.com/aws/aws-cdk>. Licence: Apache-2.0, the full text of which is at the end of this file.
 
-The files of the test kit were read at commit `025a6f67fec3d37a6ffdc6168f8a751a04918f66` (the head of `main` on 2026-11-23); every other row names its own commit. The matcher engine of the CDK lives in the internal `matching` package, which the `assertions` package re-exports: the files ported from it say so.
+The files of the test kit were read at commit `025a6f67fec3d37a6ffdc6168f8a751a04918f66` (the head of `main` on 2026-11-23); the commit each other table was read at stands in the line above it, and a table whose rows read at different commits carries a `Read at` column. The matcher engine of the CDK lives in the internal `matching` package, which the `assertions` package re-exports: the files ported from it say so.
 
 #### Code: `RubyCdk::Test`, the equivalent of `aws-cdk-lib/assertions`
 
@@ -44,6 +44,25 @@ The files of the test kit were read at commit `025a6f67fec3d37a6ffdc6168f8a751a0
 
 `lib/ruby_cdk/test/private/js.rb` is not ported from a file: the CDK has none to translate. It reproduces in Ruby the JavaScript the CDK's messages are written in (`typeof`, `String()`, `JSON.stringify`), so that a failure reads the same in both.
 
+#### Code: the curated constructs (Waves 7 and 8)
+
+All read at commit `c070afb54b9e4dbddd52a85a21077fe970354985` (aws/aws-cdk, `main`, read 2026-11-25 and 2026-11-27); Apache-2.0.
+
+| File in this repository | Ported from | Licence | What it is |
+|---|---|---|---|
+| `lib/ruby_cdk/constructs/bucket.rb` | `packages/aws-cdk-lib/aws-s3/lib/bucket.ts` | Apache-2.0 | The L2 bucket: encryption and the public access block written out, grants |
+| `lib/ruby_cdk/constructs/function.rb` | `packages/aws-cdk-lib/aws-lambda/lib/function.ts` | Apache-2.0 | The L2 function: code, handler, runtime, environment, grants |
+| `lib/ruby_cdk/constructs/log_group.rb` | `packages/aws-cdk-lib/aws-logs/lib/log-group.ts` | Apache-2.0 | The L2 log group: retention, the `/aws/lambda/<name>` shape |
+| `lib/ruby_cdk/constructs/queue.rb` | `packages/aws-cdk-lib/aws-sqs/lib/queue.ts` | Apache-2.0 | The L2 queue and its grants |
+| `lib/ruby_cdk/constructs/topic.rb` | `packages/aws-cdk-lib/aws-sns/lib/topic.ts` | Apache-2.0 | The L2 topic and its grants |
+| `lib/ruby_cdk/constructs/table.rb` | `packages/aws-cdk-lib/aws-dynamodb/lib/table.ts` | Apache-2.0 | The L2 table: billing, point-in-time recovery, grants |
+| `lib/ruby_cdk/constructs/role.rb` | `packages/aws-cdk-lib/aws-iam/lib/role.ts` | Apache-2.0 | The L2 role: trust policy, managed policies, grants |
+| `lib/ruby_cdk/constructs/ssm_parameter.rb` | `packages/aws-cdk-lib/aws-ssm/lib/parameter.ts` | Apache-2.0 | `StringParameter` and `StringListParameter` as one class: name checks, tiers, allowed pattern, read/write grants |
+| `lib/ruby_cdk/constructs/secret.rb` | `packages/aws-cdk-lib/aws-secretsmanager/lib/secret.ts`, `packages/aws-cdk-lib/core/lib/secret-value.ts` | Apache-2.0 | `fromSecretNameV2` and `SecretValue.secretsManager` as reference-only helpers: no tree node, no lookup, no grants |
+| `lib/ruby_cdk/constructs/schedule.rb` | `packages/aws-cdk-lib/aws-events/lib/schedule.ts` | Apache-2.0 | The `Schedule` factories: `rate`, `cron`, `expression` |
+| `lib/ruby_cdk/constructs/events_rule.rb` | `packages/aws-cdk-lib/aws-events/lib/rule.ts` | Apache-2.0 | The `Rule`: schedule and event pattern, pattern merging, targets |
+| `lib/ruby_cdk/constructs/restapi.rb` | `packages/aws-cdk-lib/aws-apigateway/lib/lambda-api.ts`, `integrations/lambda.ts`, `restapi.ts` | Apache-2.0 | `LambdaRestApi` over `RestApi`: the proxy resource, the ANY methods, the deployment and stage, the endpoint output |
+
 #### Tests: the CDK's own tests of that package, ported
 
 | File in this repository | Ported from | Licence | Cases |
@@ -62,6 +81,28 @@ Two files of the package are not ported, because they test what this tool does n
 |---|---|---|---|
 | `test/cdk/core/fn_test.rb` | `packages/aws-cdk-lib/core/test/fn.test.ts` | `78649cb7cf7399204ed63f629964779eeaa8b37a` | 14 of 23 ported; the others listed in the header |
 | `test/unit/assets/hasher_test.rb` | `packages/aws-cdk-lib/core/test/fs/fs-fingerprint.test.ts`, `packages/aws-cdk-lib/aws-s3-assets/test/asset.test.ts`, `packages/aws-cdk-lib/core/test/staging.test.ts` | `78649cb7cf7399204ed63f629964779eeaa8b37a` | 9 ported; the others listed in the header |
+| `test/unit/assets/record_test.rb` | `packages/aws-cdk-lib/aws-s3-assets/test/asset.test.ts` | `78649cb7cf7399204ed63f629964779eeaa8b37a` | 1 ported; the rest of asset.test.ts not ported (listed in the header) |
+| `test/cdk/core/stack_test.rb` | `packages/aws-cdk-lib/core/test/stack.test.ts` | `622f51fa4999d5557c1d1da292c04cc186ac6818` | 36 ported, 132 not ported (listed in the header) |
+| `test/cdk/core/resource_test.rb` | `packages/aws-cdk-lib/core/test/resource.test.ts` | `622f51fa4999d5557c1d1da292c04cc186ac6818` | 13 ported, 25 not ported (listed in the header) |
+| `test/cdk/validation/valid_test.rb` | `packages/aws-cdk-lib/cloudformation-include/test/valid-templates.test.ts` | `68b2516c09791d78b199f30e455e4670dc9cde6d` | 56 ported, 26 not ported (listed in the header) |
+| `test/cdk/validation/invalid_test.rb` | `packages/aws-cdk-lib/cloudformation-include/test/invalid-templates.test.ts` | `68b2516c09791d78b199f30e455e4670dc9cde6d` | 30 ported, 12 not ported (listed in the header) |
+
+#### Tests: the constructs' own suites, ported
+
+All read at commit `c070afb54b9e4dbddd52a85a21077fe970354985` (aws/aws-cdk, `main`, read 2026-11-25 and 2026-11-27); Apache-2.0.
+
+| File in this repository | Ported from | Licence | Cases |
+|---|---|---|---|
+| `test/cdk/constructs/bucket_test.rb` | `packages/aws-cdk-lib/aws-s3/test/bucket.test.ts` | Apache-2.0 | 11 ported, 189 not ported (listed in the header) |
+| `test/cdk/constructs/events_rule_test.rb` | `packages/aws-cdk-lib/aws-events/test/rule.test.ts` | Apache-2.0 | 15 ported, 28 not ported (listed in the header) |
+| `test/cdk/constructs/function_test.rb` | `packages/aws-cdk-lib/aws-lambda/test/function.test.ts` | Apache-2.0 | 5 ported, 199 not ported (listed in the header) |
+| `test/cdk/constructs/log_group_test.rb` | `packages/aws-cdk-lib/aws-logs/test/loggroup.test.ts` | Apache-2.0 | 5 ported, 48 not ported (listed in the header) |
+| `test/cdk/constructs/queue_test.rb` | `packages/aws-cdk-lib/aws-sqs/test/sqs.test.ts` | Apache-2.0 | 6 ported, 53 not ported (listed in the header) |
+| `test/cdk/constructs/restapi_test.rb` | `packages/aws-cdk-lib/aws-apigateway/test/restapi.test.ts`, `packages/aws-cdk-lib/aws-apigateway/test/lambda-api.test.ts` | Apache-2.0 | 3 ported, 95 not ported (listed in the header) |
+| `test/cdk/constructs/role_test.rb` | `packages/aws-cdk-lib/aws-iam/test/role.test.ts` | Apache-2.0 | 16 ported, 41 not ported (listed in the header) |
+| `test/cdk/constructs/ssm_parameter_test.rb` | `packages/aws-cdk-lib/aws-ssm/test/parameter.test.ts` | Apache-2.0 | 22 ported, 41 not ported (listed in the header) |
+| `test/cdk/constructs/table_test.rb` | `packages/aws-cdk-lib/aws-dynamodb/test/dynamodb.test.ts` | Apache-2.0 | 12 ported, 154 not ported (listed in the header) |
+| `test/cdk/constructs/topic_test.rb` | `packages/aws-cdk-lib/aws-sns/test/sns.test.ts` | Apache-2.0 | 10 ported, 44 not ported (listed in the header) |
 
 #### Fixtures: the corpus sample
 
@@ -84,6 +125,18 @@ Repository: <https://github.com/aws/aws-cdk-cli>. Licence: Apache-2.0, the full 
 | `test/unit/assets/zipper_test.rb` | `packages/@aws-cdk/private-tools/test/zip/zip.test.ts`, `packages/@aws-cdk/cdk-assets-lib/test/archive.test.ts` | `eca1b73d682d7763955bec30ab5dd52bbc4327b6` | 7 ported; the others listed in the header |
 | `test/unit/assets/uploader_test.rb` | `packages/@aws-cdk/cdk-assets-lib/test/files.test.ts`, `packages/@aws-cdk/cdk-assets-lib/test/zipping.test.ts` | `eca1b73d682d7763955bec30ab5dd52bbc4327b6` | 6 ported; the others listed in the header |
 
+#### Tests: the deploy, destroy and diff commands, ported
+
+All read at commit `eca1b73d682d7763955bec30ab5dd52bbc4327b6` (`main`, read 2026-11-24 and 2026-11-25); Apache-2.0.
+
+| File in this repository | Ported from | Read at | Cases |
+|---|---|---|---|
+| `test/cdk/cli/deploy_stack_test.rb` | `packages/@aws-cdk/toolkit-lib/test/api/deployments/deploy-stack.test.ts` | `eca1b73d682d7763955bec30ab5dd52bbc4327b6` | 40 ported, 77 not ported (listed in the header) |
+| `test/cdk/cli/cloudformation_deployments_test.rb` | `packages/@aws-cdk/toolkit-lib/test/api/deployments/cloudformation-deployments.test.ts` | `eca1b73d682d7763955bec30ab5dd52bbc4327b6` | 0 ported, 35 not ported (listed in the header) |
+| `test/cdk/cli/destroy_test.rb` | `packages/@aws-cdk/toolkit-lib/test/actions/destroy.test.ts` | `eca1b73d682d7763955bec30ab5dd52bbc4327b6` | 4 ported, 21 not ported (listed in the header) |
+| `test/cdk/diff/commands_diff_test.rb` | `packages/aws-cdk/test/commands/diff.test.ts` | `eca1b73d682d7763955bec30ab5dd52bbc4327b6` | 11 ported, 41 not ported (listed in the header) |
+| `test/cdk/diff/diff_template_test.rb` | `packages/@aws-cdk/cloudformation-diff/test/diff-template.test.ts` | `eca1b73d682d7763955bec30ab5dd52bbc4327b6` | 26 ported, 5 not ported (listed in the header) |
+
 ### stelligent/cfn_nag
 
 Copyright (c) 2016-2021 Stelligent Systems LLC. Licence: MIT, the full text of which is at `test/fixtures/nag/LICENSE.cfn_nag`.
@@ -105,10 +158,11 @@ Repository: <https://github.com/cdklabs/cdk-nag>. Read at commit `da5bed77c1b08e
 | File in this repository | Ported from | Licence | What it is |
 |---|---|---|---|
 | `lib/ruby_cdk/nag/rules/**` | the rule packs (` Packs/NagSuppression…`, the pack rules of the same names) | Apache-2.0 | Rule logic, messages and the suppression design, ported with changes; each file's header names its source rule and what changed |
+| `lib/ruby_cdk/nag/engine.rb` | `src/nag-pack.ts` | Apache-2.0 | The engine: every rule over every resource, suppressions and acknowledgements |
 
 ### stelligent/cfn-model
 
-Copyright (c) 2016-2020 Stelligent Systems LLC. Licence: MIT, the full text of which is at `test/fixtures/nag/LICENSE.cfn_nag`.
+Copyright (c) 2016-2020 Stelligent Systems LLC. Licence: MIT, as published in that repository's `LICENSE` file. No cfn-model fixture is shipped here; the MIT text at `test/fixtures/nag/LICENSE.cfn_nag` is cfn_nag's, not this project's.
 
 Repository: <https://github.com/stelligent/cfn-model>. Read at commit `3ca846093639c1bfdf2069d33c8050ad66122e6b` (v0.6.6, the version cfn-nag pins).
 
