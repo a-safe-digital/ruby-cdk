@@ -46,12 +46,14 @@ The threat model and the security properties of the tool itself. The reporting p
 
 ## Accepted findings
 
-Two findings from the deep security scan of 2026-11-25 are accepted design decisions. Both were reproduced as written, triaged with the owner, and kept. They are recorded here in full because the architecture document that first recorded them is not part of a fresh clone.
+Four findings from the deep security scans of 2026-11-25 and 2026-11-27 are accepted design decisions or false positives. Each was reproduced as written, triaged, and kept. They are recorded here in full because the architecture document that first recorded them is not part of a fresh clone.
 
 1. **`instance_eval(&block)` in `Stack#initialize`** — reported as code injection (CWE-95). Accepted: the call is the DSL. It passes the block the app file wrote to run in the stack's context, and it never accepts a string — the boundary test fails on `eval`-family calls given code as a string. No privilege boundary is crossed: the app file could call `eval` itself, with exactly the permissions it already has. `grep -n instance_eval lib/` finds the one call site.
 2. **`violations_in_repo(ARGV[0])` in `tools/purity_check.rb`** — reported as a path-traversal entry (a command-line argument flowing into a file walk). Accepted: the tool is a local lint run by `rake purity` or by hand, by the developer, on their own checkout, and the argument is where the repository to check lives. There is no service here and no untrusted caller.
+3. **`Mutations::ALL.fetch(ARGV.first)` in `tools/mutation_check.rb`** — reported as a tainted fetch reaching a security sink (2026-11-27 scan). Accepted, under the same rule as (2): the argument only *selects a key* from the committed mutation registry, and the key is validated against that registry before the fetch; the registry's entries are committed code, not data. A local tool run by rake on the developer's own checkout.
+4. **`File.open(File::NULL, "w")` in `lib/ruby_cdk/schema/validator/structure.rb`** — reported as an unvalidated path (CWE-22). False positive: the path is the literal `/dev/null` constant, used to silence Ruby's warnings while compiling AWS's own regular expressions; no user-derived path is involved.
 
-Both fall under the same rule: ruby-cdk's security boundary is the operator. Code that only ever runs with the operator's own authority, on the operator's own files, is not an escalation path, and a report that it might be is triaged as a designed false positive rather than suppressed.
+All fall under the same rule: ruby-cdk's security boundary is the operator. Code that only ever runs with the operator's own authority, on the operator's own files, is not an escalation path, and a report that it might be is triaged as a designed false positive rather than suppressed.
 
 ## What ruby-cdk does not protect against
 
