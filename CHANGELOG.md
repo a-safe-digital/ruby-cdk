@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ruby-cdk-assets-<account>-<region>` with the bucket's expected owner
   named on every call. The bootstrap stack with its pre-flight, and
   `ruby-cdk bootstrap`.
-- **Security rules.** `rake nag`: fifteen rules over a template as a plain
+- **Security rules.** `rake nag`: seventeen rules over a template as a plain
   Hash (open security groups, wildcard principals, secrets in the
   environment, unencrypted storage, retired runtimes), suppressions from
   resource metadata or `.ruby-cdk/nag.yml`, measured against cfn-nag's own

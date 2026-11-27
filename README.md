@@ -2,17 +2,17 @@
 
 Infrastructure as code in **pure Ruby**, in the style of the AWS CDK: define stacks as Ruby objects, synthesize deterministic CloudFormation templates validated against the schemas AWS publishes, and deploy them through change sets with the AWS SDK for Ruby. No Node.js, no jsii, no npm anywhere in the toolchain.
 
-> **Status: 0.0.1, pre-release.** Nothing is published to [rubygems.org](https://rubygems.org) yet — install from source. The API is still settling; see [Status](#status).
+> **Status: 0.1.0, pre-release.** The gem ships with each [release](https://github.com/a-safe-digital/ruby-cdk/releases); rubygems.org publishing is still pending. The API is still settling; see [Status](#status).
 
 ## What it is
 
 The AWS CDK's programming model, reimplemented in Ruby. Your app file creates one `RubyCdk::App`; stacks are classes with a `build` method that declares resources, parameters and outputs; synthesis turns the object tree into CloudFormation templates whose every byte is specified, and the `ruby-cdk` CLI deploys them through change sets. Properties are written with CloudFormation's names, or in `snake_case` — the keys are normalized against AWS's own resource schemas before anything is written.
 
-"Measured against the CDK" is a number, not a claim. The CDK's own test suites are ported and run in the default gate (`rake parity`): 675 cases across thirteen of its test files, 343 of them ported, every ported case passing, and each of the other 332 listed in a ported file's header with the reason it is not ported. The whole suite — 1,706 runs, 23,544 assertions — passes with no AWS credential reachable; the same gate keeps line coverage at 99% over a floor of 85%, and proves that every example synthesizes byte-identical output across two runs with different Ruby hash seeds.
+"Measured against the CDK" is a number, not a claim. The CDK's own test suites are ported and run in the default gate (`rake parity`): 1,551 cases, 445 of them ported, every ported case passing, and each of the others listed in a ported file's header with the reason it is not ported. The whole suite — 1,949 runs, 24,194 assertions — passes with no AWS credential reachable; the same gate keeps line coverage above 98% over a floor of 85%, and proves that every example synthesizes byte-identical output across two runs with different Ruby hash seeds.
 
 ## Install
 
-From source. There is no gem on rubygems.org yet.
+From source, or the gem attached to each [release](https://github.com/a-safe-digital/ruby-cdk/releases). There is no gem on rubygems.org yet.
 
 ```sh
 git clone https://github.com/a-safe-digital/ruby-cdk.git
@@ -22,7 +22,7 @@ bundle exec rake install:local   # builds the gem and installs it into your gems
 ```
 
     $ ruby-cdk version
-    0.0.1
+    0.1.0
 
 The gem ships no native code, so no compiler is needed.
 
@@ -272,16 +272,17 @@ That test runs:
 
 Works today:
 
-- `ruby-cdk synth`, `validate`, `ls`, `deploy`, `destroy`, `new`, `bootstrap` (`ruby-cdk help COMMAND` for each). `new PROJECT` scaffolds an app: `cdk.rb`, one stack with one private bucket, a Gemfile, `.gitattributes` and `.gitignore`.
+- `ruby-cdk synth`, `validate`, `ls`, `diff`, `deploy`, `destroy`, `new`, `bootstrap` (`ruby-cdk help COMMAND` for each). `new PROJECT` scaffolds an app: `cdk.rb`, one stack with one private bucket, a Gemfile, `.gitattributes` and `.gitignore`.
 - Schema-backed synthesis with the normalizer and rules V1–V23.
 - File assets with content hashing, zipping at deploy, and the bootstrap bucket; templates above 51,200 bytes deploy by URL.
 - The nag rule pack — seventeen security rules over every template of `cdk.out`, run with `rake nag`, suppressed per resource or in `.ruby-cdk/nag.yml`.
 - The test kit, `RubyCdk::Test`, with the CDK's assertions ported.
 - Deploy and destroy run end to end in CI against an emulator that speaks CloudFormation's real API (`rake integration`).
+- Curated constructs — `S3::Bucket`, `IAM::Role`, `Lambda::Function`, `DynamoDB::Table`, `SQS::Queue`, `SNS::Topic`, `Logs::LogGroup` — with explicit grants, and `ruby-cdk diff` against the deployed template.
 
-Next: `ruby-cdk diff` and curated L2 constructs — everything in the examples today is an L1 resource written with CloudFormation's own property names. After that, context providers (lookups of existing resources) and hotswap.
+Next: the remaining constructs of the wave cards (SSM parameters, a Secrets Manager helper, EventBridge rules, API Gateway REST APIs), context providers (lookups of existing resources), and hotswap.
 
-And the honest part: this is 0.0.1. The APIs — `Stack`, `App`, `Test`, the CLI options — may still change between versions, the `--strict-types` defect above is real, and nothing is published to rubygems.org. Pin the commit you build from.
+And the honest part: this is 0.1.0. The APIs — `Stack`, `App`, `Test`, the constructs, the CLI options — may still change between versions, the `--strict-types` defect above is real, and nothing is published to rubygems.org yet. Pin the release or commit you build from.
 
 ## Development
 
