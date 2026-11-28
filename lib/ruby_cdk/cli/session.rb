@@ -20,7 +20,7 @@ module RubyCdk
       # was given is true.
       Options = Data.define(:app, :out, :profile, :region, :account, :yes, :force, :quiet, :verbose, :json, :color,
         :long, :all, :exclusively, :execute, :on_failure, :parameters, :tags, :outputs_file,
-        :no_validate, :strict_types, :deployer, :fail, :security_only)
+        :no_validate, :strict_types, :deployer, :fail, :security_only, :hotswap, :hotswap_fallback)
 
       # Thor's options as Options.
       def self.options_from(given)
@@ -186,6 +186,7 @@ module RubyCdk
 
       # What the engine is given for a deploy.
       def deploy_options
+        check_hotswap_flags
         @deploy_options ||= Deploy::DeployOptions.new(
           parameters: Pairs.parse(options.parameters, option: "--parameters", command:),
           tags: Pairs.parse(options.tags, option: "--tags", command:),
@@ -195,7 +196,9 @@ module RubyCdk
           outputs_file: outputs_file,
           account: options.account,
           force: !!options.force,
-          profile: options.profile
+          profile: options.profile,
+          hotswap: !!options.hotswap,
+          hotswap_fallback: !!options.hotswap_fallback
         )
       end
 
@@ -223,6 +226,17 @@ module RubyCdk
       end
 
       private
+
+    # The two flags are two forms of the same question, and the CDK refuses
+    # the pair by name (cli.ts, determineHotswapMode at
+    # f7c9dca95f440a076c2abd61b66b984624b8548e: ConflictingHotswapArgs).
+    # Checked before any client is built, like every other option.
+    def check_hotswap_flags
+      return unless options.hotswap && options.hotswap_fallback
+
+      raise Usage.new("Can not supply both --hotswap and --hotswap-fallback at the same time",
+        next_step: "Run `ruby-cdk #{command}` again with only one of the two flags.")
+    end
 
       def clock
         Process.clock_gettime(Process::CLOCK_MONOTONIC)

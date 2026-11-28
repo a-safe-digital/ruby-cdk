@@ -48,19 +48,19 @@ module Architecture
       purpose: "The pipeline: prepare, resolve, the normalize and validate hooks, serialize, write, manifest (which names the gem version). It learns the normalizer, the rules and the assets only through what is registered with it."),
     Component.new(name: :assets, layer: 2, entry: "ruby_cdk/assets", paths: %w[ruby_cdk/assets.rb ruby_cdk/assets], depends_on: %i[errors values core ports], gems: %w[zip],
       purpose: "File assets: the manifest hash, the deterministic zip, the record, the builder and the upload through the object-store port. It adds Stack#asset to the tree; the tree never names it."),
-    Component.new(name: :deploy, layer: 2, entry: "ruby_cdk/deploy", depends_on: %i[errors ports], gems: [],
+    Component.new(name: :deploy, layer: 2, entry: "ruby_cdk/deploy", depends_on: %i[errors ports diff], gems: [],
       paths: %w[ruby_cdk/deploy.rb ruby_cdk/deploy/errors.rb ruby_cdk/deploy/poller.rb ruby_cdk/deploy/capabilities.rb ruby_cdk/deploy/parameters.rb
-        ruby_cdk/deploy/deployer.rb ruby_cdk/deploy/states.rb ruby_cdk/deploy/fakes.rb ruby_cdk/deploy/output],
-      purpose: "The engine: the six stack states, deploy and destroy through the ports, the scriptable fakes."),
+        ruby_cdk/deploy/deployer.rb ruby_cdk/deploy/hotswap.rb ruby_cdk/deploy/states.rb ruby_cdk/deploy/fakes.rb ruby_cdk/deploy/output],
+      purpose: "The engine: the six stack states, deploy and destroy through the ports, the scriptable fakes. The hotswap evaluation reads the per-path changes the diff component computes, as the CDK's hotswap module is built on its diff library."),
     Component.new(name: :validation, layer: 2, entry: "ruby_cdk/schema/validator", depends_on: %i[errors values schema], gems: [],
       paths: %w[ruby_cdk/schema/normalizer.rb ruby_cdk/schema/validator.rb ruby_cdk/schema/validator],
       purpose: "What CloudFormation would reject, found before it leaves the machine: the normalizer and the rules, over a template as a plain Hash and on the schema model. It names no other layer; the umbrella registers it with the pipeline."),
+    Component.new(name: :diff, layer: 2, entry: "ruby_cdk/diff", paths: %w[ruby_cdk/diff.rb ruby_cdk/diff], depends_on: %i[errors ports schema], gems: [],
+      purpose: "The change preview of two templates: sections, per-resource changes with replacement from the schema model, and the security view (architecture section 10). It reads the deployed template through the port's get_template and never reaches the SDK. Moved to layer 2 on 2026-11-28: it never reaches the SDK, its dependencies are layers 0 and 1, and the engine's hotswap evaluation reads it."),
 
     # Layer 3: the only place that knows the AWS SDK.
     Component.new(name: :adapters, layer: 3, entry: "ruby_cdk/deploy/sdk_adapters", paths: %w[ruby_cdk/deploy/sdk_adapters.rb], depends_on: %i[errors ports], gems: %w[aws-sdk-cloudformation aws-sdk-s3 aws-sdk-core],
       purpose: "The AWS SDK behind the two ports."),
-    Component.new(name: :diff, layer: 3, entry: "ruby_cdk/diff", paths: %w[ruby_cdk/diff.rb ruby_cdk/diff], depends_on: %i[errors ports schema], gems: [],
-      purpose: "The change preview of two templates: sections, per-resource changes with replacement from the schema model, and the security view (architecture section 10). It reads the deployed template through the port's get_template and never reaches the SDK."),
     Component.new(name: :bootstrap, layer: 3, entry: "ruby_cdk/bootstrap", paths: %w[ruby_cdk/bootstrap.rb], depends_on: %i[errors values cfn core synth deploy adapters], gems: [],
       purpose: "The asset bucket as a stack of this tool's own, deployed with the engine and the adapters: ruby-cdk-assets-<account>-<region>, encrypted, versioned, public access blocked, and its owner checked before anything is created. It builds its resources through cfn, like any stack does. A command builds it and hands it to the command line."),
 

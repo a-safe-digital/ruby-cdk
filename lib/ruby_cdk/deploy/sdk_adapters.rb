@@ -316,6 +316,22 @@ module RubyCdk
           ChangeSet.new(id: response.id || change_set_name)
         end
 
+        # The direct update --hotswap takes. TemplateBody and TemplateURL
+        # never go together, as the port promises; the parameters go as
+        # values, the way the change set carries them.
+        def update_stack(name, template:, parameters:, tags:, capabilities:, template_url: nil)
+          params = {
+            stack_name: name,
+            parameters: parameter_pairs(parameters),
+            tags: pairs(tags, :key, :value),
+            capabilities: capabilities
+          }
+          params[:template_body] = template if template
+          params[:template_url] = template_url if template_url
+          Sdk.request { @raw.update_stack(params) }
+          nil
+        end
+
         # Every page of the changes, so that the list is never truncated.
         def describe_change_set(name, change_set_id)
           head = Sdk.request { @raw.describe_change_set(stack_name: name, change_set_name: change_set_id) }

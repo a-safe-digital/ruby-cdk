@@ -188,6 +188,29 @@ module RubyCdk
           end
         end
 
+        # The direct update of --hotswap. CloudFormation refuses an update that
+        # would change nothing (the CDK's direct deployment matches the words
+        # of the refusal), so the fake refuses one whose template and
+        # parameters and tags are already the stack's. A test that wants
+        # another answer scripts it.
+        def update_stack(name, template:, parameters:, tags:, capabilities:, template_url: nil)
+          scripted(:update_stack, name, template: template, template_url: template_url, parameters: parameters,
+            tags: tags, capabilities: capabilities) do
+            record = lookup(name)
+            new_parameters = pairs_of(parameters, record)
+            if template_url.nil? && record && record.template == template &&
+              new_parameters == (record.parameters || {}) && tags == (record.tags || [])
+              raise RubyCdk::PreconditionError, "ValidationError: No updates are to be performed."
+            end
+
+            record.template = template if template
+            record.parameters = new_parameters
+            record.tags = tags
+            record.status = "UPDATE_COMPLETE"
+            nil
+          end
+        end
+
         def describe_change_set(name, change_set_id)
           scripted(:describe_change_set, name, change_set_id) do
             change_set = @change_sets[change_set_id]

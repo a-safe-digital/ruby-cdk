@@ -128,6 +128,12 @@ module RubyCdk
     method_option :tags, type: :string, desc: "Tags for the stacks, as KEY=VALUE pairs separated by commas"
     method_option :outputs_file, type: :string, aliases: "-O",
       desc: "File the outputs of each stack are written to, as JSON"
+    method_option :hotswap, type: :boolean,
+      desc: "Attempts to perform a 'hotswap' deployment, but does not fall back to a full deployment if that is not " \
+        "possible. Instead, changes to any non-hotswappable properties are ignored. Do not use this in production environments"
+    method_option :hotswap_fallback, type: :boolean,
+      desc: "Attempts to perform a 'hotswap' deployment, which skips the change set and updates the stack directly, " \
+        "and falls back to a full deployment if that is not possible. Do not use this in production environments"
     def deploy(*names)
       Cli::Operation.new(session, kind: :deploy).call(names)
     end

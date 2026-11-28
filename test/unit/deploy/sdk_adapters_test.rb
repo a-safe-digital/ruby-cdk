@@ -341,6 +341,44 @@ class SdkAdaptersTest < Minitest::Test
     refute request.key?(:template_body), "CloudFormation takes one of the two, never both"
   end
 
+  # --- the direct update of --hotswap
+
+  def test_the_direct_update_carries_the_template_parameters_tags_and_capabilities
+    cfn.raw.stub_responses(:update_stack, { stack_id: STACK_ID })
+
+    answer = cfn.update_stack("blog", template: "{}", parameters: [ { parameter_key: "Env", parameter_value: "prod" } ],
+      tags: [ { key: "Team", value: "a" } ], capabilities: %w[CAPABILITY_IAM])
+
+    assert_nil answer
+    assert_equal(
+      { stack_name: "blog", template_body: "{}", parameters: [ { parameter_key: "Env", parameter_value: "prod" } ],
+        tags: [ { key: "Team", value: "a" } ], capabilities: %w[CAPABILITY_IAM] },
+      sent(cfn, :update_stack)
+    )
+  end
+
+  def test_a_direct_update_with_a_template_url_sends_no_template_body
+    cfn.raw.stub_responses(:update_stack, { stack_id: STACK_ID })
+    url = "https://ruby-cdk-assets-111122223333-eu-west-1.s3.eu-west-1.amazonaws.com/templates/blog/abc.json"
+
+    cfn.update_stack("blog", template: nil, parameters: [], tags: [], capabilities: [], template_url: url)
+
+    request = sent(cfn, :update_stack)
+    assert_equal url, request[:template_url]
+    refute request.key?(:template_body), "CloudFormation takes one of the two, never both"
+  end
+
+  def test_a_refused_direct_update_is_a_request_failure_with_its_code
+    cfn.raw.stub_responses(:update_stack, answered(ValidationError, "No updates are to be performed."))
+
+    error = assert_raises(S::RequestFailed) do
+      cfn.update_stack("blog", template: "{}", parameters: [], tags: [], capabilities: [])
+    end
+
+    assert_equal "ValidationError", error.code
+    assert_includes error.message, "No updates are to be performed."
+  end
+
   # A NoEcho parameter comes back masked, so it is not re-sent: the request
   # asks CloudFormation to keep the deployed value (UsePreviousValue).
   def test_a_parameter_without_a_value_is_sent_as_the_previous_one

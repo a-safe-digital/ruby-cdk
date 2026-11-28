@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`deploy --hotswap` and `--hotswap-fallback`.** The CDK's
+  development-loop fast path: the deploy is diffed against the deployed
+  template, and when every change is a Lambda function's code (an asset's S3
+  location, `S3ObjectVersion`, or inline `ZipFile`) or in-place configuration
+  (`Handler`, `Runtime`, `MemorySize`, `Timeout`, `Environment`,
+  `Description`), one direct `UpdateStack` applies it — no change set — with
+  the CDK's own reporting lines and the same approval question a change-set
+  deploy asks. Anything else is refused by the fast path: `--hotswap-fallback`
+  hands the whole deploy to the change set (the CDK's `FALL_BACK` mode);
+  `--hotswap` reports what it refused and applies nothing (`HOTSWAP_ONLY`);
+  both flags together are refused. `--json` gains a `hotswap` object per
+  stack: the mode, whether the change set took over, the swapped functions,
+  and the refused changes with their reasons. Change sets remain the default;
+  the two flags print the CDK's drift warning. The CDK's lambda hotswap
+  scenarios are ported (`test/cdk/cli/hotswap_test.rb`; parity now 1,819
+  cases, 518 ported), with the apply-path differences recorded where this
+  tool goes through CloudFormation instead of the Lambda API.
 - **Four more curated constructs.** `SSM::Parameter` (String and StringList,
   the CDK's grants, SecureString refused with the KMS reason), a
   `SecretsManager::Secret` reference by name (partial ARN as one `Fn::Sub`,

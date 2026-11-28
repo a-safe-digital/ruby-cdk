@@ -8,7 +8,7 @@ Infrastructure as code in **pure Ruby**, in the style of the AWS CDK: define sta
 
 The AWS CDK's programming model, reimplemented in Ruby. Your app file creates one `RubyCdk::App`; stacks are classes with a `build` method that declares resources, parameters and outputs; synthesis turns the object tree into CloudFormation templates whose every byte is specified, and the `ruby-cdk` CLI deploys them through change sets. Properties are written with CloudFormation's names, or in `snake_case` — the keys are normalized against AWS's own resource schemas before anything is written.
 
-"Measured against the CDK" is a number, not a claim. The CDK's own test suites are ported and run in the default gate (`rake parity`): 1,755 cases, 485 of them ported, every ported case passing, and each of the others listed in a ported file's header with the reason it is not ported. The whole suite — 2,021 runs, 24,361 assertions — passes with no AWS credential reachable; the same gate keeps line coverage above 98% over a floor of 85%, and proves that every example synthesizes byte-identical output across two runs with different Ruby hash seeds.
+"Measured against the CDK" is a number, not a claim. The CDK's own test suites are ported and run in the default gate (`rake parity`): 1,819 cases, 518 of them ported, every ported case passing, and each of the others listed in a ported file's header with the reason it is not ported. The whole suite — 2,073 runs, 24,654 assertions — passes with no AWS credential reachable; the same gate keeps line coverage above 98% over a floor of 85%, and proves that every example synthesizes byte-identical output across two runs with different Ruby hash seeds.
 
 ## Install
 
@@ -154,6 +154,14 @@ Yes executes the change set and follows the operation, printing each event as it
 - `--on-failure DELETE|ROLLBACK|DO_NOTHING` — what CloudFormation does when a first deploy fails (default `DELETE`, so a failed creation cleans up after itself).
 - `--force` — deploy even when the deployed template, parameters and tags are unchanged (unchanged means the deploy is skipped).
 - `--all`, `-e/--exclusively` — every stack of the app in dependency order, or only the ones named.
+- `--hotswap` / `--hotswap-fallback` — the development-loop fast path; see below.
+
+**The hotswap fast path.** Change sets are the default, and the CDK's `--hotswap` flags are the deliberate way around them for the inner development loop. With `--hotswap` or `--hotswap-fallback`, the deploy diffs the synthesized template against the deployed one and, when every change is a Lambda function's code (an asset's S3 location, `S3ObjectVersion`, or inline `ZipFile`) or in-place configuration (`Handler`, `Runtime`, `MemorySize`, `Timeout`, `Environment`, `Description`), applies them with one direct `UpdateStack` — no change set, no waiting for one — reporting each function it swapped and asking the same approval question a change-set deploy asks. Anything else (a new or removed resource, a replacement, any other type or section) is refused by the fast path: `--hotswap-fallback` hands the whole deploy to the normal change set, the CDK's `FALL_BACK` mode, while `--hotswap` reports what it refused and applies nothing, the CDK's `HOTSWAP_ONLY` mode — giving both is an error. With `--json`, the per-stack record gains a `hotswap` object: the mode, whether the change set took over, the swapped functions, and the refused changes with their reasons. The command prints the CDK's own warning above every hotswap deploy:
+
+    ⚠️ The --hotswap and --hotswap-fallback flags deliberately introduce CloudFormation drift to speed up deployments
+    ⚠️ They should only be used for development - never use them for your production Stacks!
+
+A hotswap puts the stack outside what CloudFormation last deployed (drift); the next ordinary deploy brings it back in line. Do not use either flag on a production stack.
 
 `bundle exec ruby-cdk destroy` prints what the stack retains, then asks you to type the stack's name — a yes/no is not enough for an irreversible act — and deletes it. `--yes` skips the question; a termination-protected stack is refused.
 

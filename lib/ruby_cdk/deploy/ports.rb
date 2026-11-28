@@ -138,6 +138,18 @@ module RubyCdk
         Kernel.raise NotImplementedError
       end
 
+      # The direct update of a deployed stack, without a change set: the fast
+      # path `deploy --hotswap` takes (architecture section 9). template is the
+      # JSON text of the template, sent inline; template_url, when given, is
+      # the URL of the template placed in the bucket, and template is nil
+      # then: CloudFormation takes one or the other, never both (architecture
+      # §8) -- the same contract create_change_set carries. The template is
+      # the whole new one: CloudFormation updates what differs and needs the
+      # rest to know what to keep.
+      def update_stack(name, template:, parameters:, tags:, capabilities:, template_url: nil)
+        Kernel.raise NotImplementedError
+      end
+
       def describe_change_set(name, change_set_id)
         Kernel.raise NotImplementedError
       end

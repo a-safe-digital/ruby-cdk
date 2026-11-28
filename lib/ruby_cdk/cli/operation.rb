@@ -35,7 +35,8 @@ module RubyCdk
 
         # The options are read, and so checked, before any client is built: a
         # typo in one is a usage error and never a request.
-        kind == :deploy ? session.deploy_options : session.destroy_options
+        options = kind == :deploy ? session.deploy_options : session.destroy_options
+        warn_hotswap if kind == :deploy && (options.hotswap || options.hotswap_fallback)
 
         entries.each_with_index do |entry, index|
           result = nil
@@ -96,9 +97,10 @@ module RubyCdk
       end
 
       # For --json, one object on standard out per stack (architecture section
-      # 11): name, stack id, outcome, exit code, changes, outputs, and the error
-      # when it failed. Nothing else is written there. An error carries the exit
-      # code its class decides; code: overrides that, nil included.
+      # 11): name, stack id, outcome, exit code, changes, outputs, the error
+      # when it failed, and what --hotswap did when it was in play. Nothing
+      # else is written there. An error carries the exit code its class
+      # decides; code: overrides that, nil included.
       def record(name, result: nil, error: nil, code: :unset)
         return unless session.options.json
 
@@ -116,8 +118,30 @@ module RubyCdk
           "changes" => (result&.changes || []).map(&:to_h),
           "outputs" => result&.outputs || {}
         }
+        object["hotswap"] = hotswap_facts(result&.hotswap) if result&.hotswap
         object["error"] = error.is_a?(Exception) ? error.message : error.to_s if error
         session.io.result("#{JSON.generate(object)}\n")
+      end
+
+      # The hotswap facts of one deploy, as the machine contract carries them:
+      # the CDK's mode word, whether the change set took the deploy after all,
+      # and the classification's two lists.
+      def hotswap_facts(facts)
+        {
+          "mode" => facts.mode,
+          "fell_back" => facts.fell_back,
+          "swapped" => facts.swapped.map { |function| { "logical_id" => function.logical_id, "resource_type" => function.resource_type,
+            "name" => function.name } },
+          "non_hotswappable" => facts.non_hotswappable.map { |change| { "logical_id" => change.logical_id,
+            "resource_type" => change.resource_type, "reason" => change.reason } }
+        }
+      end
+
+      # The two lines above every hotswap deploy, printed once per command
+      # where the CDK prints them (cdk-toolkit.ts:566-569 at
+      # f7c9dca95f440a076c2abd61b66b984624b8548e): before the first stack.
+      def warn_hotswap
+        Deploy::Hotswap::WARNINGS.each { |line| session.io.say(line) }
       end
     end
   end

@@ -7,18 +7,23 @@ require_relative "poller"
 require_relative "capabilities"
 require_relative "parameters"
 require_relative "states"
+require_relative "hotswap"
 
 module RubyCdk
   module Deploy
     # What a deploy or a destroy may do.
     class DeployOptions
-      attr_reader :parameters, :tags, :yes, :no_execute, :on_failure, :no_rollback, :outputs_file, :account, :force, :profile
+      attr_reader :parameters, :tags, :yes, :no_execute, :on_failure, :no_rollback, :outputs_file, :account, :force, :profile,
+        :hotswap, :hotswap_fallback
 
       # force deploys even when the template and the parameters are unchanged.
       # profile is the name of the credential profile; it is shown on the target
       # line and selects nothing here, because the client was built with it.
+      # hotswap and hotswap_fallback are the CDK's --hotswap (a fast path that
+      # ignores what it cannot apply) and --hotswap-fallback (the fast path
+      # that hands the deploy to the change set when it cannot apply it).
       def initialize(parameters: {}, tags: {}, yes: false, no_execute: false, on_failure: :delete, no_rollback: false, outputs_file: nil, account: nil,
-        force: false, profile: nil)
+        force: false, profile: nil, hotswap: false, hotswap_fallback: false)
         @parameters = parameters
         @tags = tags
         @yes = yes
@@ -29,17 +34,27 @@ module RubyCdk
         @account = account
         @force = force
         @profile = profile
+        @hotswap = hotswap
+        @hotswap_fallback = hotswap_fallback
       end
     end
+
+    # What --hotswap did on one deploy, for the deploy result and --json. mode
+    # is the CDK's HotswapMode word; fell_back says the change set carried the
+    # deploy after the fast path could not; swapped and non_hotswappable are
+    # the classification's two lists.
+    HotswapFacts = Struct.new(:mode, :fell_back, :swapped, :non_hotswappable, keyword_init: true)
 
     # What came out of a deploy or a destroy. :destroyed is a destroy that
     # deleted the stack; the CDK tells the two apart as well.
     class DeployResult
       OUTCOMES = %i[deployed no_changes not_executed rejected failed destroyed].freeze
 
-      attr_reader :stack_name, :stack_id, :outcome, :changes, :outputs, :exit_code
+      attr_reader :stack_name, :stack_id, :outcome, :changes, :outputs, :exit_code, :hotswap
 
-      def initialize(stack_name:, outcome:, stack_id: nil, changes: [], outputs: {}, exit_code: 0)
+      # hotswap carries the HotswapFacts of a deploy that ran with --hotswap or
+      # --hotswap-fallback, and nil for every other one.
+      def initialize(stack_name:, outcome:, stack_id: nil, changes: [], outputs: {}, exit_code: 0, hotswap: nil)
         raise ArgumentError, "unknown outcome #{outcome.inspect}" unless OUTCOMES.include?(outcome)
 
         @stack_name = stack_name
@@ -48,6 +63,7 @@ module RubyCdk
         @changes = changes
         @outputs = outputs
         @exit_code = exit_code
+        @hotswap = hotswap
       end
     end
 
@@ -122,6 +138,13 @@ module RubyCdk
       # stack is the stack: anything that answers stack_name, env,
       # termination_protection and tags. template is the template as JSON text.
       # identity is who the credentials are for, from the client.
+      #
+      # The default is the change set (D-010, architecture section 9). With
+      # --hotswap or --hotswap-fallback the deploy first evaluates what the
+      # template would change, and applies it with update_stack directly when
+      # every change is one the fast path carries; anything else falls back to
+      # the change set (--hotswap-fallback) or is reported and ignored
+      # (--hotswap), as the CDK's two flags do.
       def deploy(stack:, template:, identity:, options:)
         name = stack.stack_name
         check_account(name, stack, identity, options)
@@ -145,11 +168,185 @@ module RubyCdk
         parameters = Parameters.new(body, options.parameters, deployed: deployed_parameters)
 
         if state == :stable && unchanged?(name, info, body, parameters, tags, options, deployed_parameters)
+          if options.hotswap || options.hotswap_fallback
+            # The CDK's skip line for a hotswap deploy (deploy-stack.ts:307-314
+            # at f7c9dca95f440a076c2abd61b66b984624b8548e). Nothing is
+            # evaluated: the template and the parameters and the tags are the
+            # ones the stack already has.
+            output.announce("✨ hotswap deployment skipped - no changes were detected (use --force to override)")
+          end
           reconcile_protection(info.id || name, info.termination_protection, stack.termination_protection)
           deliver_outputs(info, options, name)
-          return DeployResult.new(stack_name: name, stack_id: info.id, outcome: :no_changes, outputs: outputs_of(info))
+          return hotswap_guarded(options,
+            DeployResult.new(stack_name: name, stack_id: info.id, outcome: :no_changes, outputs: outputs_of(info)),
+            HotswapFacts.new(mode: hotswap_mode(options), fell_back: false, swapped: [], non_hotswappable: []))
         end
 
+        if options.hotswap || options.hotswap_fallback
+          result, facts = hotswap_deployment(stack, name, info, template, parameters, tags, capabilities, identity, options)
+          return result if result
+
+          return with_hotswap_facts(
+            change_set_deploy(stack, name, state, info, template, parameters, tags, capabilities, on_failure, identity, options),
+            facts
+          )
+        end
+
+        change_set_deploy(stack, name, state, info, template, parameters, tags, capabilities, on_failure, identity, options)
+      end
+
+      # --hotswap and --hotswap-fallback: the fast path. Everything here is
+      # the CDK's flow (hotswap-deployments.ts and deploy-stack.ts at
+      # f7c9dca95f440a076c2abd61b66b984624b8548e): read the deployed template,
+      # classify the diff, and apply it only when there is nothing in it the
+      # fast path cannot carry. Answers [result, facts]; a nil result hands the
+      # deploy to the change set below, with the facts its result is to carry.
+      def hotswap_deployment(stack, name, info, template, parameters, tags, capabilities, identity, options)
+        mode = hotswap_mode(options)
+        target = info&.id || name
+
+        plan = evaluated_plan(target, name, template)
+        unless plan
+          # The CDK catches its evaluation failure here and says this
+          # (deploy-stack.ts:379-383), then falls back -- or, without a
+          # fallback, deploys nothing.
+          output.announce("Could not perform a hotswap deployment, because the CloudFormation template could not be resolved.")
+          unless options.hotswap_fallback
+            return [ hotswap_result(name, info, :no_changes, mode),
+              HotswapFacts.new(mode: mode, fell_back: false, swapped: [], non_hotswappable: []) ]
+          end
+
+          return [ nil, HotswapFacts.new(mode: mode, fell_back: true, swapped: [], non_hotswappable: []) ]
+        end
+
+        if plan.rejected.any?
+          report_rejected(plan, mode)
+          if options.hotswap_fallback
+            output.announce("Could not perform a hotswap deployment, as the stack #{name} contains non-Asset changes")
+            output.announce("Falling back to doing a full deployment")
+            return [ nil, HotswapFacts.new(mode: mode, fell_back: true, swapped: [], non_hotswappable: plan.rejected) ]
+          end
+
+          # --hotswap ignores what it cannot apply, and applies nothing here:
+          # the one update_stack the fast path has carries the whole template,
+          # so a mixed diff is applied either whole or not at all (section 21).
+          return [ hotswap_result(name, info, :no_changes, mode, non_hotswappable: plan.rejected),
+            HotswapFacts.new(mode: mode, fell_back: false, swapped: [], non_hotswappable: plan.rejected) ]
+        end
+
+        if plan.swapped.empty?
+          # An empty diff never reaches here (the skip rule catches it), so
+          # this is a diff of nothing but ignored annotations -- the CDK's
+          # noOp deploy (hotswap-deployments.ts:146).
+          return [ hotswap_result(name, info, :no_changes, mode),
+            HotswapFacts.new(mode: mode, fell_back: false, swapped: [], non_hotswappable: []) ]
+        end
+
+        output.announce("\n✨ hotswapping resources:")
+        plan.swapped.each { |function| output.announce("   ✨ #{Hotswap.resource_text(function)}") }
+
+        unless approved?(options, "Hotswap these changes to stack #{name} in account #{identity.account} (#{identity.region})?")
+          raise ApprovalRequired, "Approval for the hotswap of stack #{name} was not given, so nothing was applied.\n" \
+            "Run the command again in a terminal to approve it, or with --yes to deploy without asking."
+        end
+
+        # A template too large for a request is placed in the bucket, and the
+        # update carries its URL instead of its body, as the change set does.
+        # The update names the stack the way the CDK's direct deployment does,
+        # by its name; the events are followed by its ID.
+        template_url = place_template(stack, template)
+        begin
+          client.update_stack(name, template: template_url ? nil : template, template_url: template_url,
+            parameters: parameters.api, tags: tags, capabilities: capabilities)
+        rescue RubyCdk::PreconditionError => e
+          raise unless /No updates are to be performed\./.match?(e.message)
+
+          # The race the CDK's direct deployment also catches: the stack took
+          # its new state from another deploy while this one was reading it.
+          output.announce("#{name}: CloudFormation reports that the update would change nothing. Nothing was applied.")
+          return [ hotswap_result(name, info, :no_changes, mode),
+            HotswapFacts.new(mode: mode, fell_back: false, swapped: [], non_hotswappable: []) ]
+        end
+        plan.swapped.each { |function| output.announce("   ✨ #{Hotswap.resource_text(function)} hotswapped!") }
+
+        final_state, final_info, events, problem = follow_operation(target, name)
+        if final_state == :stable && (final_info.nil? || DEPLOYED_STATUSES.include?(final_info.status))
+          deliver_outputs(final_info, options, name)
+          return [ hotswap_result(name, final_info, :deployed, mode, swapped: plan.swapped,
+            stack_id: final_info&.id || target, outputs: outputs_of(final_info)),
+            HotswapFacts.new(mode: mode, fell_back: false, swapped: plan.swapped, non_hotswappable: []) ]
+        end
+
+        output.failure(operation_failure(name, final_state, final_info, events, :deploy, problem))
+        [ hotswap_result(name, final_info, :failed, mode, swapped: plan.swapped,
+          stack_id: final_state == :absent ? nil : (final_info&.id || target), exit_code: 5),
+          HotswapFacts.new(mode: mode, fell_back: false, swapped: plan.swapped, non_hotswappable: []) ]
+      end
+
+      # The deployed template against the new one, classified. A template that
+      # cannot be read or compared stops the fast path here; the answer is nil
+      # then, and the deploy falls back or stops.
+      def evaluated_plan(target, name, template)
+        deployed = client.get_template(target)
+        Hotswap.plan(Diff.of(deployed, template, stack_name: name))
+      rescue StandardError
+        nil
+      end
+
+      # The rejected changes, as the CDK lists them (hotswap-deployments.ts,
+      # logRejectedChanges and nonHotswappableChangeMessage): a heading that
+      # names the way out, then one line per change. An output has its own
+      # shape; the rejected properties are named in the reason itself.
+      def report_rejected(plan, mode)
+        heading = if mode == Hotswap::FALL_BACK
+          "⚠️ The following non-hotswappable changes were found:"
+        else
+          "⚠️ The following non-hotswappable changes were found. To reconcile these using CloudFormation, " \
+            "specify --hotswap-fallback"
+        end
+        output.announce(heading)
+        plan.rejected.each do |change|
+          output.announce(if change.resource_type == "Output"
+            "    output: #{change.logical_id}, reason: #{change.reason}"
+          else
+            "    resource: #{change.logical_id}, type: #{change.resource_type}, reason: #{change.reason}"
+          end)
+        end
+      end
+
+      # A hotswap deploy's result, with its facts. The lists are what the
+      # result stands for: what was applied and what was refused, not the
+      # whole plan. info is the stack's last read: its ID is the best name the
+      # stack has.
+      def hotswap_result(name, info, outcome, mode, swapped: [], non_hotswappable: [], stack_id: nil, outputs: {}, exit_code: 0)
+        DeployResult.new(stack_name: name, stack_id: stack_id || info&.id, outcome: outcome, outputs: outputs,
+          exit_code: exit_code, hotswap: HotswapFacts.new(mode: mode, fell_back: false, swapped: swapped,
+            non_hotswappable: non_hotswappable))
+      end
+
+      # Rebuilds a result of the change-set path with the facts of the hotswap
+      # that handed the deploy over to it.
+      def with_hotswap_facts(result, facts)
+        DeployResult.new(stack_name: result.stack_name, stack_id: result.stack_id, outcome: result.outcome,
+          changes: result.changes, outputs: result.outputs, exit_code: result.exit_code, hotswap: facts)
+      end
+
+      # A deploy without --hotswap carries no facts; the skip result of one
+      # that does carries the empty ones.
+      def hotswap_guarded(options, result, facts)
+        return result unless options.hotswap || options.hotswap_fallback
+
+        with_hotswap_facts(result, facts)
+      end
+
+      # The CDK's HotswapMode word for the flags given.
+      def hotswap_mode(options)
+        options.hotswap_fallback ? Hotswap::FALL_BACK : Hotswap::HOTSWAP_ONLY
+      end
+
+      # The change-set deploy: everything after the skip rule and the hotswap
+      # attempt, with what both computed.
+      def change_set_deploy(stack, name, state, info, template, parameters, tags, capabilities, on_failure, identity, options)
         # A template too large for a request is placed in the bucket, and the
         # change set carries its URL instead of its body. It is placed here, once
         # a change set is actually coming: a deploy that has nothing to do never
