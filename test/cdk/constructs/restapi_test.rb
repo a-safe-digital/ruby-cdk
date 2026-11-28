@@ -2,16 +2,18 @@
 
 # Ported from the AWS CDK.
 #
-#   Origin:  packages/aws-cdk-lib/aws-apigateway/test/restapi.test.ts and
-#            packages/aws-cdk-lib/aws-apigateway/test/lambda-api.test.ts, in
-#            aws/aws-cdk
+#   Origin:  packages/aws-cdk-lib/aws-apigateway/test/restapi.test.ts,
+#            packages/aws-cdk-lib/aws-apigateway/test/lambda-api.test.ts and
+#            packages/aws-cdk-lib/aws-apigateway/test/integrations/lambda.test.ts,
+#            in aws/aws-cdk
 #   Commit:  c070afb54b9e4dbddd52a85a21077fe970354985 (main, read on 2026-11-27)
 #   Licence: Apache-2.0. The AWS CDK's test scenarios; this file's wording is this repository's.
 #
 # The origins have 85 cases (80 declarations, two test.each tables of two and
-# three rows) and 13 cases: 98 between them. The construct behind this file is
-# the CDK's LambdaRestApi over the RestApi it extends - the REST API with the
-# Lambda proxy - which is the slice of the two files this wave carries.
+# three rows), 13 cases and 10 cases: 108 between them. The construct behind
+# this file is the CDK's LambdaRestApi over the RestApi it extends - the REST
+# API with the Lambda proxy - which is the slice of the three files this wave
+# carries.
 #
 # What changed to get there:
 #
@@ -58,10 +60,19 @@
 #     options.defaultIntegration, CORS with and without
 #     defaultMethodOptions, integrationOptions (allowTestInvoke,
 #     scopePermissionToMethod, proxy mapping), the function Alias case, and
-#     the deployOptions-variables validation. A proxy is always on here, the
-#     permission is never written, and no integration options are taken.
+#     the deployOptions-variables validation. A proxy is always on here and
+#     no integration options are taken; the permission is always the
+#     API-scoped one.
+#   - the integrations file's per-method permission cases (the method-scoped
+#     SourceArn, the console's test invoke, the permission reuse across
+#     integrations). The permission here is the CDK's API-scoped one,
+#     written once for the whole API (architecture section 21).
 #
-# Parity: 98 cases in the origin; 3 ported; 95 not ported; 3 tests.
+# The fifth test is this tool's own, no case of the origins: the function of
+# the sandbox run of 2026-11-27 used twice, two APIs against it, so the D-029
+# snapshot pins the two permissions and their ids.
+#
+# Parity: 108 cases in the origin; 4 ported; 104 not ported; 5 tests.
 
 require "test_helper"
 require "support/cdk_constructs"
@@ -128,5 +139,76 @@ class CdkConstructsRestApiTest < CdkConstructs::TestCase
     template(built).has_resource_properties("AWS::ApiGateway::RestApi", {
       "Name" => "restapi"
     })
+  end
+
+  def test_scope_permission_to_method_set_to_false_creates_api_scoped_permission
+    # Changed: this construct always writes the API-scoped permission - there
+    # are no integration options here (see the header) - and the origin's
+    # Fn::Join over the five parts is one Fn::Sub over the same parts, as the
+    # SSM parameter ARN is (architecture section 21).
+    built = stack do
+      handler = RubyCdk::Lambda::Function.new(self, "handler",
+        code: { "ZipFile" => "foo" }, handler: "index.handler")
+      RubyCdk::ApiGateway::RestApi.new(self, "myapi", handler: handler)
+    end
+
+    template(built).resource_count_is("AWS::Lambda::Permission", 1)
+    template(built).has_resource_properties("AWS::Lambda::Permission", {
+      "Action" => "lambda:InvokeFunction",
+      "FunctionName" => { "Fn::GetAtt" => [ "handlerResource", "Arn" ] },
+      "Principal" => "apigateway.amazonaws.com",
+      "SourceArn" => {
+        "Fn::Sub" => [
+          "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${__ApiId}/*/*/*",
+          { "__ApiId" => { "Ref" => "myapiResource" } }
+        ]
+      }
+    })
+  end
+
+  def test_the_api_and_its_function_used_twice_get_two_distinct_permissions
+    # This tool's own case (see the header): one function, two APIs against it,
+    # the shape the sandbox run of 2026-11-27 proved. D-029 joins the ids in
+    # front of each resource's own, so both permissions sit under the
+    # function's id and each names its own API in the SourceArn.
+    built = stack do
+      handler = RubyCdk::Lambda::Function.new(self, "handler",
+        code: { "ZipFile" => "boom" }, handler: "index.handler")
+      RubyCdk::ApiGateway::RestApi.new(self, "oneapi", handler: handler)
+      RubyCdk::ApiGateway::RestApi.new(self, "twoapi", handler: handler)
+    end
+
+    template(built).template_matches(with_format_version(
+      "Resources" => {
+        "handlerApiPermissiononeapiResource" => {
+          "Type" => "AWS::Lambda::Permission",
+          "Properties" => {
+            "Action" => "lambda:InvokeFunction",
+            "FunctionName" => { "Fn::GetAtt" => [ "handlerResource", "Arn" ] },
+            "Principal" => "apigateway.amazonaws.com",
+            "SourceArn" => {
+              "Fn::Sub" => [
+                "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${__ApiId}/*/*/*",
+                { "__ApiId" => { "Ref" => "oneapiResource" } }
+              ]
+            }
+          }
+        },
+        "handlerApiPermissiontwoapiResource" => {
+          "Type" => "AWS::Lambda::Permission",
+          "Properties" => {
+            "Action" => "lambda:InvokeFunction",
+            "FunctionName" => { "Fn::GetAtt" => [ "handlerResource", "Arn" ] },
+            "Principal" => "apigateway.amazonaws.com",
+            "SourceArn" => {
+              "Fn::Sub" => [
+                "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${__ApiId}/*/*/*",
+                { "__ApiId" => { "Ref" => "twoapiResource" } }
+              ]
+            }
+          }
+        }
+      }
+    ))
   end
 end

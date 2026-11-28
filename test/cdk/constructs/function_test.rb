@@ -51,13 +51,13 @@
 #   - fromFunctionArn / fromFunctionName / imported-function grant and
 #     permission cases. Lookups of existing resources are not in 0.1.0
 #     (D-022).
-#   - addPermission cases (principals of every kind, sourceArn and
-#     sourceAccount conditions, principalOrgID, skipPermissions warnings). The
-#     CDK's addPermission writes a Lambda::Permission to the function's
-#     resource policy; this tool grants to identities only, so there is no
-#     Permission resource and no permission principals to parse - grant_invoke
-#     is the one case of it, ported with the statement the grantee's policy
-#     carries.
+#   - addPermission cases beyond the one resource write (principals of every
+#     kind, principalOrgID, skipPermissions warnings, the imported
+#     functions' permissions). The resource write is ported below; the
+#     principal-class cases are not, because this tool has no principal
+#     classes - the principal is the String as it is written (architecture
+#     section 21, the account-id-as-principal row) - and the imports stay
+#     lookups (D-022).
 #   - logRetention and logGroup prop cases, and the LogRetention retry options.
 #     The function's log group here is a real LogGroup construct of the stack;
 #     the CDK's custom-resource route does not exist in this tool.
@@ -69,7 +69,7 @@
 #     constructs.
 #   - metrics cases. No metrics here.
 #
-# Parity: 204 cases in the origin; 5 ported; 199 not ported.
+# Parity: 204 cases in the origin; 6 ported; 198 not ported.
 
 require "test_helper"
 require "support/cdk_constructs"
@@ -209,6 +209,56 @@ class CdkConstructsFunctionTest < CdkConstructs::TestCase
         ]
       },
       "Roles" => [ { "Ref" => "RoleResource" } ]
+    })
+  end
+
+  def test_can_be_used_to_add_permissions_to_the_lambda_function
+    # Changed: the principal is the service principal's name as it is written
+    # (this tool has no principal classes, see the header), sourceAccount is
+    # this stack's account where the origin's is stack.account - the same Ref
+    # of AWS::AccountId either way - the managed policy ARN is the literal
+    # (see the header), and the function carries the log group's DependsOn
+    # beside the role's.
+    built = stack do
+      fn = RubyCdk::Lambda::Function.new(self, "MyLambda",
+        code: { "ZipFile" => "foo" },
+        handler: "bar",
+        runtime: "python3.14")
+      fn.add_permission("S3Permission",
+        action: "lambda:*",
+        principal: "s3.amazonaws.com",
+        source_account: Fn.ref("AWS::AccountId"),
+        source_arn: "arn:aws:s3:::my_bucket")
+    end
+
+    template(built).has_resource_properties("AWS::IAM::Role", {
+      "AssumeRolePolicyDocument" => {
+        "Statement" => [ {
+          "Action" => "sts:AssumeRole",
+          "Effect" => "Allow",
+          "Principal" => { "Service" => "lambda.amazonaws.com" }
+        } ],
+        "Version" => "2012-10-17"
+      },
+      "ManagedPolicyArns" => [ "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole" ]
+    })
+
+    template(built).has_resource("AWS::Lambda::Function", {
+      "Properties" => {
+        "Code" => { "ZipFile" => "foo" },
+        "Handler" => "bar",
+        "Role" => { "Fn::GetAtt" => [ "MyLambdaServiceRoleResource", "Arn" ] },
+        "Runtime" => "python3.14"
+      },
+      "DependsOn" => [ "MyLambdaServiceRoleResource", "MyLambdaLogGroupResource" ]
+    })
+
+    template(built).has_resource_properties("AWS::Lambda::Permission", {
+      "Action" => "lambda:*",
+      "FunctionName" => { "Fn::GetAtt" => [ "MyLambdaResource", "Arn" ] },
+      "Principal" => "s3.amazonaws.com",
+      "SourceAccount" => { "Ref" => "AWS::AccountId" },
+      "SourceArn" => "arn:aws:s3:::my_bucket"
     })
   end
 

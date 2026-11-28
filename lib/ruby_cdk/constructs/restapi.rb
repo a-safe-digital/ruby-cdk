@@ -16,15 +16,17 @@ module RubyCdk
     #   api = RubyCdk::ApiGateway::RestApi.new(stack, "Api",
     #     handler: function, rest_api_name: "notes-api")
     #
-    # One construct builds the five resources the CDK's own minimal template
-    # shows (its restapi.test.ts, "minimal setup"): the AWS::ApiGateway::RestApi
+    # One construct builds the six resources the CDK's own minimal template
+    # shows (its restapi.test.ts, "minimal setup") plus the permission the
+    # invocation needs: the AWS::ApiGateway::RestApi
     # named after the construct's id when rest_api_name is left out
     # (restapi.ts:436), the {proxy+} resource under the root
     # (resource.ts:199-201), the ANY method on the proxy and on the root - a
     # proxy under the root puts its method on both (resource.ts:630-640) - the
     # AWS::ApiGateway::Deployment (restapi.ts:737-752, "Automatically created
-    # by the RestApi construct") and the prod AWS::ApiGateway::Stage, plus the
-    # Endpoint output (restapi.ts:753, urlForPath).
+    # by the RestApi construct") and the prod AWS::ApiGateway::Stage, the
+    # Endpoint output (restapi.ts:753, urlForPath), and the
+    # AWS::Lambda::Permission on the handler.
     #
     # The integration is the CDK's Lambda proxy: AWS_PROXY, POST, the
     # invoke URI of the function (integrations/lambda.ts:47-59). Authorization
@@ -37,11 +39,16 @@ module RubyCdk
     # Where this tool differs from the CDK (architecture section 7 wins; the
     # rows are listed in section 21):
     #
-    #   - No Lambda::Permission. The CDK's LambdaIntegration.bind gives
-    #     apigateway.amazonaws.com permission to invoke the function
-    #     (integrations/lambda.ts:61-80); this tool grants to identities only
-    #     and has no resource policies, so the function's own policy is not
-    #     broadened here - function.grant_invoke is the identity-side wiring.
+    #   - One Lambda::Permission, on the function, for the whole API. The CDK's
+    #     LambdaIntegration.bind gives apigateway.amazonaws.com permission to
+    #     invoke the function, per method and scoped to the method's ARN, plus
+    #     a second one for the console's test invoke (integrations/lambda.ts:
+    #     80-110); here the construct writes one AWS::Lambda::Permission,
+    #     SourceArn one Fn::Sub over the execution ARN of the API with the API's
+    #     Ref and stage, method and path all "*" - the CDK's arnForExecuteApi
+    #     default (restapi.ts:504) as one Fn::Sub over the same five parts, as
+    #     the SSM parameter ARN row writes it. The id names the API, so a
+    #     function that backs two APIs gets two permissions (D-029).
     #   - No CloudWatch role and no AWS::ApiGateway::Account
     #     (restapi.ts:689-714): the account-wide effect of a role per API is
     #     not a safe default to write silently; logs go to the function's own
@@ -69,6 +76,13 @@ module RubyCdk
       INVOKE_PATH = "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/" \
         "2015-03-31/functions/${FunctionArn}/invocations"
 
+      # The SourceArn of the permission: the execution ARN of the API, every
+      # stage, method and path - the CDK's arnForExecuteApi default
+      # (restapi.ts:504), which the CDK renders an Fn::Join over (its
+      # integrations/lambda.test.ts, "scopePermissionToMethod set to false
+      # creates API-scoped permission"), as one Fn::Sub here.
+      EXECUTION_ARN = "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${__ApiId}/*/*/*"
+
       attr_reader :rest_api_name, :stage_name, :authorization
 
       def initialize(scope, id, handler:, rest_api_name: nil, description: nil,
@@ -94,6 +108,15 @@ module RubyCdk
         @method_resources = method_properties.each_with_index.map do |properties, index|
           resource(index.zero? ? "RootMethod" : "ProxyMethod", "AWS::ApiGateway::Method", properties: properties)
         end
+
+        # The permission the invocation needs (integrations/lambda.ts:80-110):
+        # API Gateway calls the function as the service principal, which has no
+        # policy of its own, so the statement lands on the function's resource
+        # policy. The id names the API, so a function that backs two APIs gets
+        # two permissions (D-029). Proven necessary by the sandbox run of
+        # 2026-11-27: without it the endpoint answers 500.
+        @handler.add_permission("ApiPermission#{logical_id}", principal: "apigateway.amazonaws.com",
+          source_arn: Fn.sub(EXECUTION_ARN, "__ApiId" => Fn.ref(@api_resource)))
 
         # The Deployment is the CDK's one hashed logical id: a short hash of
         # the API's method set follows the ids in front of it, so a changed

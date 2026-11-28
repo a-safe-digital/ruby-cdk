@@ -7,8 +7,7 @@ require "support/core_helpers"
 
 # This tool's own tests of the REST API, what no CDK case reaches here
 # (docs/07-testing.md section 10): twice in one stack, the resources the
-# construct does not write (no Lambda::Permission, no Account), and the
-# refusals.
+# construct does not write (no Account), and the refusals.
 class ConstructsRestApiTest < CoreHelpers::TestCase
   def test_an_api_used_twice_carries_two_distinct_sets_of_resources
     app = build_app(env: TEST_ENV)
@@ -27,6 +26,24 @@ class ConstructsRestApiTest < CoreHelpers::TestCase
     template.resource_count_is("AWS::ApiGateway::Stage", 2)
     template.has_resource_properties("AWS::ApiGateway::RestApi", { "Name" => "one" })
     template.has_resource_properties("AWS::ApiGateway::RestApi", { "Name" => "two" })
+    # One permission per API (D-029): each names its own API in the SourceArn.
+    template.resource_count_is("AWS::Lambda::Permission", 2)
+    template.has_resource_properties("AWS::Lambda::Permission", {
+      "SourceArn" => {
+        "Fn::Sub" => [
+          "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${__ApiId}/*/*/*",
+          { "__ApiId" => { "Ref" => "OneResource" } }
+        ]
+      }
+    })
+    template.has_resource_properties("AWS::Lambda::Permission", {
+      "SourceArn" => {
+        "Fn::Sub" => [
+          "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${__ApiId}/*/*/*",
+          { "__ApiId" => { "Ref" => "TwoResource" } }
+        ]
+      }
+    })
   end
 
   def test_an_api_without_a_name_is_named_after_its_id
@@ -59,7 +76,7 @@ class ConstructsRestApiTest < CoreHelpers::TestCase
     })
   end
 
-  def test_no_permission_and_no_account_are_written
+  def test_no_account_is_written
     built, = build_stack do
       handler = RubyCdk::Lambda::Function.new(self, "Fn",
         code: { "ZipFile" => "x" }, handler: "app.handler")
@@ -67,7 +84,6 @@ class ConstructsRestApiTest < CoreHelpers::TestCase
     end
     template = RubyCdk::Test.template(built)
 
-    template.resource_count_is("AWS::Lambda::Permission", 0)
     template.resource_count_is("AWS::ApiGateway::Account", 0)
     template.resource_count_is("AWS::IAM::Role", 1) # the function's own service role
   end

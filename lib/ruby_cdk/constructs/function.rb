@@ -41,11 +41,16 @@ module RubyCdk
     #   - The function resource depends on the role resource as well
     #     (function.ts, this.resource.node.addDependency(this.role)).
     #
-    # grant_invoke is the CDK's grantInvoke (aws-lambda/lib/function-base.ts):
-    # lambda:InvokeFunction on the function's ARN, applied to the principal's
-    # own policy. The CDK instead adds a Lambda::Permission to the function's
-    # resource policy; this tool grants to identities only, so the statement
-    # lands on the caller's role - the same permission, from the other side.
+    # Two permission sides, as the CDK has two. grant_invoke is the CDK's
+    # grantInvoke (aws-lambda/lib/function-base.ts): lambda:InvokeFunction on
+    # the function's ARN, applied to the principal's own policy - the
+    # identity-based side. add_permission is the CDK's addPermission
+    # (function-base.ts:407, the CfnPermission it creates at :424, the props in
+    # permission.ts): an AWS::Lambda::Permission under the function's logical
+    # id, the resource-policy side a service principal needs, because a service
+    # principal that invokes the function itself - API Gateway, EventBridge -
+    # carries no policy of its own (proven on the 2026-11-27 sandbox run,
+    # where a proxied endpoint 500'd without it; D-020's note).
     class Function < Construct
       # The runtime identifier the examples pin. Dated: 2026-11-26, from AWS's
       # supported-runtimes page. No enum, by design - pass runtime: to move.
@@ -111,9 +116,29 @@ module RubyCdk
 
       # Grants lambda:InvokeFunction on this function's ARN to the principal
       # (function-base.ts, grantInvoke): on the qualified ARN and on the
-      # unqualified one, as the CDK grants both.
+      # unqualified one, as the CDK grants both. The statement lands on the
+      # principal's own policy - the identity-based side.
       def grant_invoke(principal)
         Constructs::Grant.add_to_principal(principal, [ INVOKE_ACTION ], [ qualified_arn, arn ])
+      end
+
+      # Writes a resource policy statement on the function: the CDK's
+      # addPermission (function-base.ts:407-432), one AWS::Lambda::Permission
+      # whose FunctionName is the function's ARN, as the CDK passes functionArn
+      # there. The resource sits in this function's logical-id namespace under
+      # the id given (D-029), so two constructs that wire the same function
+      # pass ids that differ - the rule's or the API's. principal is the
+      # service principal or ARN as it is written ("apigateway.amazonaws.com");
+      # action defaults to the CDK's lambda:InvokeFunction; source_arn and
+      # source_account narrow the statement to a caller (the CDK's sourceArn
+      # and sourceAccount).
+      def add_permission(id, principal:, action: INVOKE_ACTION, source_arn: nil, source_account: nil)
+        resource(id, "AWS::Lambda::Permission",
+          Action: valid_action(action),
+          FunctionName: arn,
+          Principal: valid_principal(principal),
+          SourceArn: valid_source_arn(source_arn),
+          SourceAccount: valid_source_account(source_account))
       end
 
       private
@@ -122,6 +147,40 @@ module RubyCdk
         return runtime if runtime.is_a?(String) && !runtime.empty?
 
         raise UsageError, "#{path}: the runtime must be an identifier String such as \"#{DEFAULT_RUNTIME}\", got #{runtime.inspect}"
+      end
+
+      def valid_action(action)
+        return action if action.is_a?(String) && !action.empty?
+
+        raise UsageError, "#{path}: the action must be an identifier String such as \"#{INVOKE_ACTION}\", got #{action.inspect}"
+      end
+
+      # The principal as it is written: a service principal's name
+      # ("apigateway.amazonaws.com") or an ARN principal. The CDK takes
+      # principal objects; this tool has none (architecture section 21, the
+      # account-id-as-principal row).
+      def valid_principal(principal)
+        return principal if principal.is_a?(String) && !principal.empty?
+
+        raise UsageError, "#{path}: add_permission takes a service principal or an ARN String, got #{principal.inspect}"
+      end
+
+      # A literal ARN or a CloudFormation function, as the rule's own arn is.
+      def valid_source_arn(source_arn)
+        return nil if source_arn.nil?
+        return source_arn if source_arn.is_a?(String) && !source_arn.empty?
+        return source_arn if source_arn.is_a?(Hash) && !source_arn.empty?
+
+        raise UsageError, "#{path}: source_arn takes an ARN String or a CloudFormation function, got #{source_arn.inspect}"
+      end
+
+      def valid_source_account(source_account)
+        return nil if source_account.nil?
+        return source_account if source_account.is_a?(String) && !source_account.empty?
+        return source_account if source_account.is_a?(Hash) && !source_account.empty?
+
+        raise UsageError, "#{path}: source_account takes an account id String or a CloudFormation function, " \
+          "got #{source_account.inspect}"
       end
 
       def valid_handler(handler)

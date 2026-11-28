@@ -34,15 +34,13 @@ module RubyCdk
     # recurse, and a bare value is refused, as the CDK refuses one.
     #
     # Where this tool differs from the CDK (architecture section 7 wins; the
-    # row is in section 21): add_target records the target on the rule, and
-    # writes no permission. The CDK's Lambda target adds a
-    # Lambda::Permission to the function's resource policy - principal
-    # events.amazonaws.com, source ARN the rule's
-    # (aws-events-targets/lib/lambda.ts:32-46, util.ts:90-108). This tool
-    # grants to identities only and has no resource policies, so the
-    # function's own policy is not broadened here: call function.grant_invoke
-    # on a role of your own for the identity-based side, and the events
-    # service permission arrives with resource policies, if they ever come.
+    # row is in section 21): add_target records the target on the rule and
+    # writes the permission the delivery needs on the function's resource
+    # policy, as the CDK's Lambda target does - principal events.amazonaws.com,
+    # SourceArn the rule's ARN, one AWS::Lambda::Permission per rule and
+    # function (aws-events-targets/lib/lambda.ts:34, util.ts:90-108). The
+    # identity-based side is a separate grant: call function.grant_invoke on a
+    # role of your own when a role - not the events service - is to invoke.
     class Rule < Construct
       # The CDK's own limit (rule.ts:358-360).
       MAX_TARGETS = 5
@@ -63,6 +61,7 @@ module RubyCdk
         @schedule_expression = schedule_expression(schedule)
         @event_bus_name = valid_bus(event_bus_name)
         @targets = []
+        @granted = []
         @pattern = {}
 
         # The pattern and the targets stand behind Lazies, so that a pattern
@@ -113,8 +112,13 @@ module RubyCdk
       end
 
       # Adds a Lambda function as a target (aws-events-targets/lib/lambda.ts,
-      # bind): the Targets entry, Id Target0 and on, Arn the function's. No
-      # permission is written - see the header and architecture section 21.
+      # bind): the Targets entry, Id Target0 and on, Arn the function's, plus
+      # the permission the delivery needs on the function's resource policy
+      # (util.ts:90-108) - principal events.amazonaws.com, SourceArn this
+      # rule's ARN, written once per function however many targets carry it,
+      # as the CDK writes it once (its tryFindChild guard). The permission's
+      # id names the rule, where the CDK's names the handler, because the
+      # resource sits under the function here (D-029).
       def add_target(function)
         unless function.respond_to?(:arn)
           raise UsageError, "#{path}: add_target takes a function with an arn, got #{function.inspect}"
@@ -124,6 +128,11 @@ module RubyCdk
         end
 
         @targets << { "Id" => "Target#{@targets.length}", "Arn" => function.arn }
+        unless @granted.include?(function)
+          function.add_permission("AllowEventRule#{logical_id}", principal: "events.amazonaws.com",
+            source_arn: arn)
+          @granted << function
+        end
         nil
       end
 

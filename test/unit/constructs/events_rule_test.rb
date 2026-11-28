@@ -49,17 +49,23 @@ class ConstructsEventsRuleTest < CoreHelpers::TestCase
     })
   end
 
-  def test_add_target_writes_no_permission
+  def test_add_target_writes_the_permission_on_the_function
     built, = build_stack do
       function = RubyCdk::Lambda::Function.new(self, "Fn",
         code: { "ZipFile" => "x" }, handler: "app.handler")
       RubyCdk::Events::Rule.new(self, "Rule", schedule: "rate(1 minute)").add_target(function)
     end
 
-    # The CDK's addLambdaPermission writes an AWS::Lambda::Permission; this
-    # tool grants to identities only (architecture section 21), so none is
-    # here.
-    RubyCdk::Test.template(built).resource_count_is("AWS::Lambda::Permission", 0)
+    # The CDK's addLambdaPermission writes an AWS::Lambda::Permission; so
+    # does add_target now (architecture section 21, amended 2026-11-28): the
+    # statement lands on the function's resource policy, where the events
+    # service - a principal without a policy of its own - can be read.
+    RubyCdk::Test.template(built).has_resource_properties("AWS::Lambda::Permission", {
+      "Action" => "lambda:InvokeFunction",
+      "FunctionName" => { "Fn::GetAtt" => [ "FnResource", "Arn" ] },
+      "Principal" => "events.amazonaws.com",
+      "SourceArn" => { "Fn::GetAtt" => [ "RuleResource", "Arn" ] }
+    })
   end
 
   def test_a_target_without_an_arn_is_refused

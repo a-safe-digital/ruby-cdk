@@ -2,13 +2,16 @@
 
 # Ported from the AWS CDK.
 #
-#   Origin:  packages/aws-cdk-lib/aws-events/test/rule.test.ts, in aws/aws-cdk
+#   Origin:  packages/aws-cdk-lib/aws-events/test/rule.test.ts and
+#            packages/aws-cdk-lib/aws-events-targets/test/lambda/lambda.test.ts,
+#            in aws/aws-cdk
 #   Commit:  c070afb54b9e4dbddd52a85a21077fe970354985 (main, read on 2026-11-27)
 #   Licence: Apache-2.0. The AWS CDK's test scenarios; this file's wording is this repository's.
 #
 # The origin has 41 test declarations and one test.each table of two rows
-# (L1 and L2): 43 cases. Each ported one keeps its name, as a comment above
-# the test, and what it expects. What changed to get there:
+# (L1 and L2): 43 cases; the targets file has 10: 53 between them. Each
+# ported one keeps its name, as a comment above the test, and what it
+# expects. What changed to get there:
 #
 #   - The origin's `new cdk.Stack()` is `stack` here, `Template.fromStack` is
 #     `template`; the logical ID is the ids above the resource joined, never
@@ -27,8 +30,10 @@
 #   - The origin's `eventBus: new EventBus(...)` is `event_bus_name:` here:
 #     this wave carries no EventBus construct, the rule takes the bus's name.
 #   - The origin's targets carry arn: `SomeTarget` fakes; here a target is
-#     anything with an arn, a Struct in these tests or a Lambda::Function in
-#     an app.
+#     anything with an arn and add_permission, the FakeTarget stub in these
+#     tests or a Lambda::Function in an app. The Lambda target's permission
+#     is written under the function's logical id (D-029), where the CDK's
+#     sits under the rule, so the permission's id names the rule.
 #
 # Not ported, with the reason:
 #
@@ -63,8 +68,17 @@
 #     target props in this wave; the Lambda target is the one carried.
 #   - the test.each L1/L2 rows. Direct CfnRule construction is not a case
 #     here: grants and resources go through the constructs.
+#   - the lambda target's DeadLetterQueue cases (three: the queue policy, the
+#     region refusal, the cross-account warning) and its retry-policy cases
+#     (two). No DLQ or retry props on a target here; they arrive with the
+#     target props.
+#   - adding the same singleton function as target creates the permission only
+#     once. No singleton function: two Functions are two constructs, and the
+#     permission sits under each one's own id (D-029).
+#   - lambda handler and cloudwatch event across stacks. Cross-stack target
+#     wiring is not in this wave, as the rule.test.ts cases above.
 #
-# Parity: 43 cases in the origin; 15 ported; 28 not ported; 15 tests.
+# Parity: 53 cases in the origin; 18 ported; 35 not ported; 18 tests.
 
 require "test_helper"
 require "support/cdk_constructs"
@@ -102,12 +116,14 @@ class CdkConstructsEventsRuleTest < CdkConstructs::TestCase
   end
 
   def test_rule_cannot_have_more_than_5_targets
-    target = Struct.new(:arn)
+    # Changed: the check is at construction, not at synthesis (see header),
+    # and the fake carries add_permission, the method a real function has
+    # that add_target calls to write the permission.
     error = assert_raises(RubyCdk::UsageError) do
       stack do
         rule = RubyCdk::Events::Rule.new(self, "MyRule",
           schedule: RubyCdk::Events::Schedule.rate(10, :minutes))
-        6.times { |index| rule.add_target(target.new("arn:of:#{index}")) }
+        6.times { |index| rule.add_target(FakeTarget.new("arn:of:#{index}")) }
       end
     end
 
@@ -277,5 +293,85 @@ class CdkConstructsEventsRuleTest < CdkConstructs::TestCase
     end
 
     assert_match(/Cannot associate rule with 'eventBus' when using 'schedule'/, error.message)
+  end
+
+  def test_use_lambda_as_an_event_rule_target
+    # Changed: the logical IDs (MyLambdaCCE802FB is MyLambdaResource), and two
+    # add_target calls where the origin wraps the function in its target
+    # object (see header). One permission per rule and function; the id names
+    # the rule, where the CDK's names the handler.
+    built = stack do
+      handler = RubyCdk::Lambda::Function.new(self, "MyLambda",
+        code: { "ZipFile" => "foo" }, handler: "bar")
+      rule1 = RubyCdk::Events::Rule.new(self, "Rule",
+        schedule: RubyCdk::Events::Schedule.rate(1, :minutes))
+      rule2 = RubyCdk::Events::Rule.new(self, "Rule2",
+        schedule: RubyCdk::Events::Schedule.rate(5, :minutes))
+      rule1.add_target(handler)
+      rule2.add_target(handler)
+    end
+
+    template(built).has_resource_properties("AWS::Lambda::Permission", {
+      "Action" => "lambda:InvokeFunction",
+      "FunctionName" => { "Fn::GetAtt" => [ "MyLambdaResource", "Arn" ] },
+      "Principal" => "events.amazonaws.com",
+      "SourceArn" => { "Fn::GetAtt" => [ "RuleResource", "Arn" ] }
+    })
+    template(built).has_resource_properties("AWS::Lambda::Permission", {
+      "Action" => "lambda:InvokeFunction",
+      "FunctionName" => { "Fn::GetAtt" => [ "MyLambdaResource", "Arn" ] },
+      "Principal" => "events.amazonaws.com",
+      "SourceArn" => { "Fn::GetAtt" => [ "Rule2Resource", "Arn" ] }
+    })
+    template(built).resource_count_is("AWS::Events::Rule", 2)
+    template(built).has_resource_properties("AWS::Events::Rule", {
+      "Targets" => [ { "Arn" => { "Fn::GetAtt" => [ "MyLambdaResource", "Arn" ] }, "Id" => "Target0" } ]
+    })
+  end
+
+  def test_adding_same_lambda_function_as_target_multiple_times_creates_permission_only_once
+    # Changed: the origin's case name says "mutiple"; the expectation is the
+    # same, and there is no RuleTargetInput here (see header).
+    built = stack do
+      handler = RubyCdk::Lambda::Function.new(self, "MyLambda",
+        code: { "ZipFile" => "foo" }, handler: "bar")
+      rule = RubyCdk::Events::Rule.new(self, "Rule",
+        schedule: RubyCdk::Events::Schedule.rate(1, :minutes))
+      rule.add_target(handler)
+      rule.add_target(handler)
+    end
+
+    template(built).resource_count_is("AWS::Lambda::Permission", 1)
+  end
+
+  def test_adding_different_lambda_functions_as_target_multiple_times_creates_multiple_permissions
+    # Changed: the origin's case name says "mutiple"; the expectation is the
+    # same, and there is no RuleTargetInput here (see header).
+    built = stack do
+      fn1 = RubyCdk::Lambda::Function.new(self, "MyLambda",
+        code: { "ZipFile" => "foo" }, handler: "bar")
+      fn2 = RubyCdk::Lambda::Function.new(self, "MyLambda2",
+        code: { "ZipFile" => "foo" }, handler: "bar")
+      rule = RubyCdk::Events::Rule.new(self, "Rule",
+        schedule: RubyCdk::Events::Schedule.rate(1, :minutes))
+      rule.add_target(fn1)
+      rule.add_target(fn2)
+    end
+
+    template(built).resource_count_is("AWS::Lambda::Permission", 2)
+  end
+end
+
+# The origin's SomeTarget: the arn, and the method add_target calls to write
+# the permission (see the header).
+class FakeTarget
+  attr_reader :arn
+
+  def initialize(arn)
+    @arn = arn
+  end
+
+  def add_permission(*)
+    nil
   end
 end

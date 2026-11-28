@@ -28,9 +28,13 @@
 #     statement lands in the principal's own policy through the grantee's
 #     grantPrincipal (Role.grantPrincipal is the role itself, role.ts:462) and
 #     its addToPrincipalPolicy (role.ts:653), which creates the DefaultPolicy
-#     resource. This tool grants to identities only, so there is no resource
-#     policy here and no Lambda::Permission: a grant never broadens a
-#     resource's own policy.
+#     resource. A grant_* never broadens a resource's own policy. The
+#     resource-policy side - the AWS::Lambda::Permission a service principal
+#     that invokes a function itself needs, which cannot carry a statement of
+#     its own - is Function#add_permission, the CDK's addPermission
+#     (function-base.ts:407), and the constructs that point a service
+#     principal at a function wire it (D-020's note of 2026-11-28,
+#     architecture section 21).
 #
 # Anything where the CDK does differently from the safe defaults of
 # architecture section 7 is decided for section 7 and listed in architecture
